@@ -1,0 +1,7 @@
+numpy>=2.1.0
+scipy>=1.10.0
+pandas>=2.0.0
+requests
+pytz
+h5py
+pvlib
