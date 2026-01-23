@@ -9,11 +9,11 @@ class Battery:
         Номинальная энергоемкость, Вт·ч
         Nominal energy capacity, Wh
     soc_max: float
-        Максимально допустимый СЗ. По умолчанию 1.0
-        The maximum allowable SOC is 1.0 by default.
-    soc_min:
-        Минимально допустимый СЗ. По умолчанию 0.0
-        The minimum allowable SOC is 0.0 by default.
+        Максимально допустимый СЗ, %.
+        The maximum allowable SOC, %.
+    soc_min: float
+        Минимально допустимый СЗ, %.
+        The minimum allowable SOC, %.
     r_power_ch: float
         Номинальная предельная мощность заряда, Вт
     r_power_ds: float
@@ -33,8 +33,8 @@ class Battery:
     """
     def __init__(self, e_cr: float, soc_max: float, soc_min: float, r_power_ch: float, r_power_ds: float, eff: float, aux_power: float, cp: float):
         self.e_cr = e_cr
-        self.soc_max = soc_max
-        self.soc_min = soc_min
+        self.soc_max = soc_max/100
+        self.soc_min = soc_min/100
         self.r_power_ch = r_power_ch
         self.r_power_ds = r_power_ds
         self.eff = eff/100
