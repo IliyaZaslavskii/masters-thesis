@@ -5,7 +5,7 @@ class Battery:
 
     Параметры (Parameters)
     ----------
-    e_cr: float
+    capacity: float
         Номинальная энергоемкость, Вт·ч
         Nominal energy capacity, Wh
     soc_max: float
@@ -21,8 +21,11 @@ class Battery:
     eff: float
         Эффективность заряда-разряда, %
         roundtrip efficiency, %.
-    aux_power: float
-        Мощность потребления вспомогательной подсистемы, Вт
+    aux_p_ch: float
+        Мощность потребления вспомогательной подсистемы при заряде, Вт
+        auxiliary power consumption, Wh
+    aux_p_ds: float
+        Мощность потребления вспомогательной подсистемы при разряде, Вт
         auxiliary power consumption, Wh
     cp: float
         Саморазряд СНЭЭ, %
@@ -31,51 +34,63 @@ class Battery:
     ----------
 
     """
-    def __init__(self, e_cr: float, soc_max: float, soc_min: float, r_power_ch: float, r_power_ds: float, eff: float, aux_power: float, cp: float):
-        self.e_cr = e_cr
+    def __init__(self, capacity: float, soc_max: float, soc_min: float, r_power_ch: float, r_power_ds: float, eff: float, cp: float):
+        self.capacity = capacity
         self.soc_max = soc_max/100
         self.soc_min = soc_min/100
         self.r_power_ch = r_power_ch
         self.r_power_ds = r_power_ds
         self.eff = eff/100
-        self.aux_power = aux_power
         self.cp = cp/100
+        self.aux_p_ch = cp/100 * capacity + r_power_ch * (1 - eff)
+        # self.aux_p_ds
 
-    def charge(self, soc: float) -> tuple:
+    def charge(self, net_power: float, soc: float) -> tuple:
         """
         Функция заряда батареи
         Battery charge function.
 
         Параметры (Parameters)
         ----------
+        net_power: float
+            Мощность  из сети.
+            Network Power.
         soc: float
-            Допустимый СЗ.
-            Available SOC.
+            Доcтупный СЗ.
+            Accessible SOC.
         Возвращает (Returns)
         ----------
         tuple:
             p_ch: float
                 Мощность зарядки.
-            e_cap: float
+            e_new: float
                 Доступная энергия после зарядки.
             soc_new: float
                 Доступный уровень заряда (SOC) после зарядки.
         """
-        p_ch = - min(self.e_cr * (self.soc_max - soc), self.r_power_ch)
-        e_cap = self.e_cr * soc - p_ch * self.eff - self.cp * self.e_cr # Available energy capacity
-        soc_new = e_cap / self.e_cr
-        return p_ch, e_cap, soc_new
 
-    def discharge(self, soc: float) -> tuple:
+        if self.aux_p_ch >= net_power:
+            return 0, self.capacity * soc, soc
+        else:
+            ava_e = min(net_power, self.r_power_ch) # Available energy capacity
+            p_ch = - min(self.capacity * (self.soc_max - soc), ava_e)
+            e_new = self.capacity * soc - p_ch * self.eff - self.cp * self.capacity # New available energy capacity
+            soc_new = e_new / self.capacity
+            return p_ch, e_new, soc_new
+
+    def discharge(self, net_power: float, soc: float) -> tuple:
         """
         Функция разряда батареи
         Battery discharge function.
 
         Параметры (Parameters)
         ----------
+        net_power: float
+            Мощность  из сети.
+            Network Power.
         soc: float
-            Допустимый СЗ.
-            Available SOC.
+            Доcтупный СЗ.
+            Accessible SOC.
         Возвращает (Returns)
         ----------
         tuple:
@@ -86,10 +101,15 @@ class Battery:
             soc_new: float
                 Доступный уровень заряда (SOC) после разряда.
         """
-        p_ds = min(self.e_cr * (soc - self.soc_min), self.r_power_ds)
-        e_cap = self.e_cr * soc - p_ds / self.eff - self.cp * self.e_cr  # Available energy capacity
-        soc_new = e_cap / self.e_cr
-        return p_ds, e_cap, soc_new
+        if self.capacity * (soc - self.soc_min) * self.eff <= self.cp * self.capacity:
+            return 0, self.capacity * soc, soc
+        else:
+            ava_e = min(net_power, self.r_power_ds) # Available energy capacity
+            p_ds =min(self.capacity * (soc - self.soc_min) * self.eff - self.cp * self.capacity, ava_e)
+            e_new = self.capacity * soc - p_ds / self.eff - self.cp * self.capacity  # New available energy capacity
+            soc_new = e_new / self.capacity
+            return p_ds, e_new, soc_new
+
 
     def soc_status(self, soc: float) -> str:
         """
