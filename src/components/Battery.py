@@ -45,7 +45,7 @@ class Battery:
         self.aux_p_ch = cp/100 * capacity + r_power_ch * (1 - eff)
         # self.aux_p_ds
 
-    def charge(self, net_power: float, soc: float) -> tuple:
+    def charge(self, net_power: float, soc: float) -> tuple[float, float, float]:
         """
         Функция заряда батареи
         Battery charge function.
@@ -60,25 +60,29 @@ class Battery:
             Accessible SOC.
         Возвращает (Returns)
         ----------
-        tuple:
+        tuple[float, float, float]:
             p_ch: float
                 Мощность зарядки.
+                Charging power.
             e_new: float
-                Доступная энергия после зарядки.
+                Доступная энергия после заряда.
+                Available energy after charging.
             soc_new: float
-                Доступный уровень заряда (SOC) после зарядки.
+                Доступный уровень СЗ после заряда..
         """
 
-        if self.aux_p_ch >= net_power:
-            return 0, self.capacity * soc, soc
+        if net_power <= self.aux_p_ch:
+            p_ch = 0.0
+            e_new = self.capacity * soc
+            soc_new = soc
         else:
             ava_e = min(net_power, self.r_power_ch) # Available energy capacity
             p_ch = - min(self.capacity * (self.soc_max - soc), ava_e)
             e_new = self.capacity * soc - p_ch * self.eff - self.cp * self.capacity # New available energy capacity
             soc_new = e_new / self.capacity
-            return p_ch, e_new, soc_new
+        return p_ch, e_new, soc_new
 
-    def discharge(self, net_power: float, soc: float) -> tuple:
+    def discharge(self, net_power: float, soc: float) -> tuple[float, float, float]:
         """
         Функция разряда батареи
         Battery discharge function.
@@ -93,22 +97,27 @@ class Battery:
             Accessible SOC.
         Возвращает (Returns)
         ----------
-        tuple:
+        tuple[float, float, float]:
             p_ds: float
                 Мощность разряда.
-            e_cap: float
+                Discharge power.
+            e_new: float
                 Доступная энергия после разряда.
+                Available energy after discharge.
             soc_new: float
-                Доступный уровень заряда (SOC) после разряда.
+                Доступный уровень СЗ после разряда.
+                SOC after discharge.
         """
         if self.capacity * (soc - self.soc_min) * self.eff <= self.cp * self.capacity:
-            return 0, self.capacity * soc, soc
+            p_ds = 0.0
+            e_new = self.capacity * soc
+            soc_new = soc
         else:
             ava_e = min(net_power, self.r_power_ds) # Available energy capacity
             p_ds =min(self.capacity * (soc - self.soc_min) * self.eff - self.cp * self.capacity, ava_e)
             e_new = self.capacity * soc - p_ds / self.eff - self.cp * self.capacity  # New available energy capacity
             soc_new = e_new / self.capacity
-            return p_ds, e_new, soc_new
+        return p_ds, e_new, soc_new
 
 
     def soc_status(self, soc: float) -> str:
