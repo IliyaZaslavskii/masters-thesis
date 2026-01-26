@@ -43,7 +43,7 @@ class Battery:
         self.eff = eff/100
         self.cp = cp/100
         self.aux_p_ch = cp/100 * capacity + r_power_ch * (1 - eff)
-        # self.aux_p_ds
+        self.aux_p_ds = cp/100 * capacity + (r_power_ds - r_power_ds * eff) / eff
 
     def charge(self, net_power: float, soc: float) -> tuple[float, float, float]:
         """
@@ -71,7 +71,7 @@ class Battery:
                 Доступный уровень СЗ после заряда..
         """
 
-        if net_power <= self.aux_p_ch:
+        if net_power <= self.aux_p_ch or self.capacity * (self.soc_max - soc) <= self.aux_p_ch:
             p_ch = 0.0
             e_new = self.capacity * soc
             soc_new = soc
@@ -108,7 +108,7 @@ class Battery:
                 Доступный уровень СЗ после разряда.
                 SOC after discharge.
         """
-        if self.capacity * (soc - self.soc_min) * self.eff <= self.cp * self.capacity:
+        if self.capacity * (soc - self.soc_min) <= self.aux_p_ds:
             p_ds = 0.0
             e_new = self.capacity * soc
             soc_new = soc
