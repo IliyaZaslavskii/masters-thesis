@@ -71,13 +71,13 @@ class Battery:
                 Доступный уровень СЗ после заряда..
         """
 
-        if net_power <= self.aux_p_ch or self.capacity * (self.soc_max - soc) <= self.aux_p_ch:
+        if net_power <= self.aux_p_ch:
             p_ch = 0.0
             e_new = self.capacity * soc
             soc_new = soc
         else:
-            ava_e = min(net_power, self.r_power_ch) # Available energy capacity
-            p_ch = - min(self.capacity * (self.soc_max - soc), ava_e)
+            ava_e = min(net_power, self.r_power_ch) # New available energy capacity
+            p_ch = - min(self.capacity * (self.soc_max - soc) / self.eff + self.cp * self.capacity, ava_e)
             e_new = self.capacity * soc - p_ch * self.eff - self.cp * self.capacity # New available energy capacity
             soc_new = e_new / self.capacity
         return p_ch, e_new, soc_new
