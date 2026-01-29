@@ -3,8 +3,10 @@ import numpy as np
 class DieselGenerator:
     def __init__(self, num_DGs: int, r_capacity: float, a1: float, a2: float, start_up_price: float, fuel_price: float):
         """
+        Класс моделирования системы накопления электрической энергии (СНЭЭ)
+        A class that models a diesel generator (DG).
         num_DGs: int
-            Number of generators, pcs
+            Number of diesel generators, pcs
             Количество генераторов, шт
         r_capacity: float
             The nominal power of each diesel generator (kW)
@@ -32,12 +34,12 @@ class DieselGenerator:
         # Состояние массива генераторов
         # Status of the generator array
         self.power_outputs = np.zeros(num_DGs)
-        self.total_fuel_consumption = 0.0  # Общий расход топлива
-        self.total_cost = 0.0  # Общая стоимость
-        self.start_up_count = 0  # Количество запусков
+        # self.fuel_consumption = 0.0  # Общий расход топлива
+        # self.fuel_cost = 0.0  # Общая стоимость
+        # self.start_up_count = 0  # Количество запусков
 
 
-    def calculate_fuel_consumption(self, generate: float):
+    def calculate_fuel_consumption(self, generate: float) -> float:
         """
         The fuel consumption of the diesel generator (DG)
         Зависимость расхода топлива от номинальной мощности и текущей нагрузки ДГУ
@@ -46,22 +48,24 @@ class DieselGenerator:
             return 0.0
         return self.a1 * generate + self.a2 * self.r_capacity
 
-    def calculate_operating_cost(self, power_kw: float, is_starting: bool = False) -> float:
+    def calculate_operating_cost(self, power_kw: float, is_on: bool = False) -> float:
         """
         Расчет стоимости эксплуатации одного генератора
         """
         pass
 
-    def distribute_load_among_generators(self, target_num_running: int,
+    def distribute_load_among_generators(self, num_DGs_running: int,
                                          load: float) -> np.ndarray:
         """
         Распределение нагрузки между работающими генераторами
 
         Параметры (Parameters)
         ----------
-        target_num_running: int
+        num_DGs_running: int
+            Number of generators running
             Количество работающих генераторов
         load: float
+            Electrical load
             Требуемая мощность нагрузки
 
         Возвращает (Returns)

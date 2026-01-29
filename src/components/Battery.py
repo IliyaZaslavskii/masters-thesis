@@ -1,7 +1,7 @@
 class Battery:
     """
     Класс моделирования системы накопления электрической энергии (СНЭЭ)
-    A class that models a storage battery energy storage system (BESS).
+    A class that models a battery energy storage system (BESS).
 
     Параметры (Parameters)
     ----------
@@ -18,9 +18,12 @@ class Battery:
         Номинальная предельная мощность заряда, Вт
     r_power_ds: float
         Номинальная предельная мощность разряда, Вт
-    eff: float
-        Эффективность заряда-разряда, %
-        roundtrip efficiency, %.
+    eff_ch: float
+        Эффективность заряда, %
+        roundtrip efficiency charging, %.
+    eff_ds: float
+        Эффективность разряда, %
+        roundtrip efficiency discharging, %.
     aux_p_ch: float
         Мощность потребления вспомогательной подсистемы при заряде, Вт
         auxiliary power consumption, Wh
@@ -29,21 +32,20 @@ class Battery:
         auxiliary power consumption, Wh
     cp: float
         Саморазряд СНЭЭ, %
-
-    Возвращает (Returns)
-    ----------
+        self-discharge of BESS, %
 
     """
-    def __init__(self, capacity: float, soc_max: float, soc_min: float, r_power_ch: float, r_power_ds: float, eff: float, cp: float):
+    def __init__(self, capacity: float, soc_max: float, soc_min: float, r_power_ch: float, r_power_ds: float, eff_ch: float, eff_ds: float, cp: float):
         self.capacity = capacity
         self.soc_max = soc_max/100
         self.soc_min = soc_min/100
         self.r_power_ch = r_power_ch
         self.r_power_ds = r_power_ds
-        self.eff = eff/100
+        self.eff_ch = eff_ch/100
+        self.eff_ds = eff_ds / 100
         self.cp = cp/100
-        self.aux_p_ch = cp/100 * capacity + r_power_ch * (1 - eff)
-        self.aux_p_ds = cp/100 * capacity + (r_power_ds - r_power_ds * eff) / eff
+        self.aux_p_ch = cp/100 * capacity + r_power_ch * (1 - eff_ch)
+        self.aux_p_ds = cp/100 * capacity + (r_power_ds - r_power_ds * eff_ds) / eff_ds
 
     def charge(self, net_power: float, soc: float) -> tuple[float, float, float]:
         """
