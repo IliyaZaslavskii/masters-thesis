@@ -79,8 +79,8 @@ class Battery:
             soc_new = soc
         else:
             ava_e = min(net_power, self.r_power_ch) # New available energy capacity
-            p_ch = - min(self.capacity * (self.soc_max - soc) / self.eff + self.cp * self.capacity, ava_e)
-            e_new = self.capacity * soc - p_ch * self.eff - self.cp * self.capacity # New available energy capacity
+            p_ch = - min(self.capacity * (self.soc_max - soc) / self.eff_ch + self.cp * self.capacity, ava_e)
+            e_new = self.capacity * soc - p_ch * self.eff_ch - self.cp * self.capacity # New available energy capacity
             soc_new = e_new / self.capacity
         return p_ch, e_new, soc_new
 
@@ -116,8 +116,8 @@ class Battery:
             soc_new = soc
         else:
             ava_e = min(net_power, self.r_power_ds) # Available energy capacity
-            p_ds =min(self.capacity * (soc - self.soc_min) * self.eff - self.cp * self.capacity, ava_e)
-            e_new = self.capacity * soc - p_ds / self.eff - self.cp * self.capacity  # New available energy capacity
+            p_ds =min(self.capacity * (soc - self.soc_min) * self.eff_ds - self.cp * self.capacity, ava_e)
+            e_new = self.capacity * soc - p_ds / self.eff_ds - self.cp * self.capacity  # New available energy capacity
             soc_new = e_new / self.capacity
         return p_ds, e_new, soc_new
 
