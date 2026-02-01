@@ -103,43 +103,6 @@ class DieselGenerator:
 
         return fuel_cost + start_penalty
 
-    def _allocate_equal_with_bounds(self, n: int, load: float) -> np.ndarray:
-        """
-        Water-filling алгоритм.
-        Распределяем S между n генераторами в пределах [p_min, p_max]
-        """
-        if n == 0:
-            return np.array([])
-        low, high = self.p_min, self.p_max
-        x = np.full(n, load / n, dtype=np.float64)
-        mask_free = np.ones(n, dtype=bool)
-        remaining_load = load
-        remaining_n = n
-
-        for _ in range(n):
-            if remaining_n == 0:
-                break
-            share = remaining_load / remaining_n
-            below = mask_free & (share <= low)
-            above = mask_free & (share >= high)
-            if not below.any() and not above.any():
-                x[mask_free] = share
-                break
-            if below.any():
-                x[below] = low
-                remaining_load -= low * below.sum()
-                mask_free[below] = False
-                remaining_n = mask_free.sum()
-                continue
-            if above.any():
-                x[above] = high
-                remaining_load -= high * above.sum()
-                mask_free[above] = False
-                remaining_n = mask_free.sum()
-                continue
-        allocated_power = np.clip(x, low, high)
-        return allocated_power
-
     def optimize_DGs(self, u_prev: np.ndarray,
                                          load: float, r_electricity: float):
         """
@@ -172,31 +135,26 @@ class DieselGenerator:
         best_p = None
         best_u = None
 
-        # Перебор всех комбинаций включённых генераторов (0/1)
-        for u_candidate in product([0, 1], repeat=n):
-            u_candidate = np.array(u_candidate, dtype=int)
-            running_count = u_candidate.sum()
-
-            # Проверяем, возможно ли распределить нагрузку
-            if running_count == 0 or load < running_count * self.p_min or load > running_count * self.p_max:
-                continue  # невозможно
-
-            # Равномерно распределяем нагрузку среди включённых ДГУ
-            p_candidate = self._allocate_equal_with_bounds(
-                n=running_count,
-                load=load
-            )
-            # Формируем полный массив мощностей с нулями для выключенных
-            p_full = np.zeros(n)
-            p_full[u_candidate == 1] = p_candidate
+        k = round(load / self.p_max)
+        if k > n:
+            return False
+        else:
+            while k <= n:
+                p = load / k
+                if p < self.p_min:
+                    break
+                u_candidate = np.array([1] * k + [0] * (n - k), dtype=int)
+                p_load = np.array([p] * k + [0] * (n - k), dtype=float)
+                running_count = u_candidate.sum()
+                k += 1
 
             # Считаем полную стоимость
-            cost = self.total_cost(p_full, u_candidate, u_prev, r_electricity)
+            cost = self.total_cost(p_load, u_candidate, u_prev, r_electricity)
 
             # Сохраняем лучший вариант
             if cost < best_cost:
                 best_cost = cost
-                best_p = p_full
+                best_p = p_load
                 best_u = u_candidate
 
         return best_p, best_u, best_cost
