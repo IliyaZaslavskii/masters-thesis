@@ -6,8 +6,8 @@ class Battery:
     Параметры (Parameters)
     ----------
     capacity: float
-        Номинальная энергоемкость, Вт·ч
-        Nominal energy capacity, Wh
+        Номинальная энергоемкость, кВт·ч
+        Nominal energy capacity, kWh
     soc_max: float
         Максимально допустимый СЗ, %.
         The maximum allowable SOC, %.
@@ -15,9 +15,9 @@ class Battery:
         Минимально допустимый СЗ, %.
         The minimum allowable SOC, %.
     r_power_ch: float
-        Номинальная предельная мощность заряда, Вт
+        Номинальная предельная мощность заряда, кВт
     r_power_ds: float
-        Номинальная предельная мощность разряда, Вт
+        Номинальная предельная мощность разряда, кВт
     eff_ch: float
         Эффективность заряда, %
         roundtrip efficiency charging, %.
@@ -25,11 +25,11 @@ class Battery:
         Эффективность разряда, %
         roundtrip efficiency discharging, %.
     aux_p_ch: float
-        Мощность потребления вспомогательной подсистемы при заряде, Вт
-        auxiliary power consumption, Wh
+        Мощность потребления вспомогательной подсистемы при заряде, кВт
+        auxiliary power consumption, kW
     aux_p_ds: float
-        Мощность потребления вспомогательной подсистемы при разряде, Вт
-        auxiliary power consumption, Wh
+        Мощность потребления вспомогательной подсистемы при разряде, кВт
+        auxiliary power consumption, kW
     cp: float
         Саморазряд СНЭЭ, %
         self-discharge of BESS, %
