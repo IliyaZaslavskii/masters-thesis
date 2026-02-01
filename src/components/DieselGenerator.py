@@ -5,7 +5,7 @@ import numpy as np
 class DieselGenerator:
     def __init__(self, num_DGs: int, r_capacity: float, a1: float, a2: float, start_stop_price: float, fuel_price: float):
         """
-        Класс моделирования системы накопления электрической энергии (СНЭЭ)
+        Класс моделирования работы дизель-генератора
         A class that models a diesel generator (DG).
         num_DGs: int
             Количество генераторов, шт
@@ -20,9 +20,11 @@ class DieselGenerator:
             Эмпирический коэффициент, л/кВт·ч.
             The fuel curve slope, l/kWh
         start_stop_price: float
-            Стоимость пуска-останова одного двигателя
+            Стоимость пуска-останова одного двигателя, руб.
+            The cost of starting and stopping one diesel generator, RUB
         fuel_price: float
-            Стоимость литра топлива
+            Стоимость кз топлива, руб./кг
+            The cost of a kg of fuel, RUB/kg.
         """
 
         self.num_DGs = num_DGs
@@ -37,9 +39,6 @@ class DieselGenerator:
         # Status of the generator array
         self.power_outputs = np.ones(num_DGs)
         self.n = self.power_outputs.size
-        # self.fuel_consumption = 0.0  # Общий расход топлива
-        # self.fuel_cost = 0.0  # Общая стоимость
-        # self.start_up_count = 0  # Количество запусков
 
 
     def get_DGs(self) -> np.ndarray:
@@ -63,17 +62,19 @@ class DieselGenerator:
             Массив мощностей генераторов
             Array of diesel generator power outputs
         p : float, optional
-            Плотность топлива, по умолчанию 860
-            Fuel density, default 860
+            Плотность топлива, по умолчанию 860 кг/м3
+            Fuel density, default 860 kg/m3
         k : float, optional
             Коэффициент теплотворной способности, по умолчанию 1.45
             Calorific value coefficient, default 1.45
 
         Возвращает (Returns)
         specific_cons: np.ndarray
-            Удельный расход условного топлива
+            Удельный расход условного топлива, л/кВт·ч
+            Specific fuel consumption, l/kWh
         total_cons: np.ndarray
-            Абсолютный расход топлива
+            Абсолютный расход топлива, кг
+            Absolute fuel consumption, kg
         ----------
 
         """
@@ -87,9 +88,14 @@ class DieselGenerator:
     def total_cost(self, power: np.ndarray, u: np.ndarray, u_prev: np.ndarray, r_electricity: float) -> float:
         """
         Полная стоимость: топливо + старт/стоп
+        Параметры (Parameters)
+        ----------
+        power: float
+            Мощность генератора.
+            Generator power.
         """
         # Топливо
-        _, fuel_cons = DieselGenerator.calculate_fuel_consumption(power)
+        _, fuel_cons = self.calculate_fuel_consumption(power)
         fuel_cost = np.sum(fuel_cons) * r_electricity
 
         # Старт/стоп
@@ -97,7 +103,7 @@ class DieselGenerator:
 
         return fuel_cost + start_penalty
 
-    def _allocate_equal_with_bounds(self,n: int, load: float) -> np.ndarray:
+    def _allocate_equal_with_bounds(self, n: int, load: float) -> np.ndarray:
         """
         Water-filling алгоритм.
         Распределяем S между n генераторами в пределах [p_min, p_max]
@@ -142,14 +148,14 @@ class DieselGenerator:
         Параметры (Parameters)
         ----------
         u_prev: np.ndarray
-            Количество работающих генераторов
-            Number of generators running
+            Количество работающих генераторов, шт
+            Number of generators running, pcs
         load: float
-            Требуемая мощность нагрузки
-            Electrical load
+            Требуемая мощность нагрузки, кВт
+            Electrical load, kW
         r_electricity: float
-            Тариф на электроэнергию
-            Electricity tariff
+            Тариф на электроэнергию, руб./кВт·ч
+            Electricity tariff, RUB/kWh
 
         Возвращает (Returns)
         -----------
@@ -176,13 +182,16 @@ class DieselGenerator:
                 continue  # невозможно
 
             # Равномерно распределяем нагрузку среди включённых ДГУ
-            p_candidate = DieselGenerator._allocate_equal_with_bounds(running_count, load)
+            p_candidate = self._allocate_equal_with_bounds(
+                n=running_count,
+                load=load
+            )
             # Формируем полный массив мощностей с нулями для выключенных
             p_full = np.zeros(n)
             p_full[u_candidate == 1] = p_candidate
 
             # Считаем полную стоимость
-            cost = DieselGenerator.total_cost(p_full, u_candidate, u_prev, r_electricity)
+            cost = self.total_cost(p_full, u_candidate, u_prev, r_electricity)
 
             # Сохраняем лучший вариант
             if cost < best_cost:
