@@ -131,9 +131,9 @@ class DieselGenerator:
             Минимальная стоимость
         """
         n = self.n
-        best_cost = np.inf
         best_p = None
         best_u = None
+        best_cost = np.inf
 
         k = round(load / self.p_max)
         if k > n:
@@ -143,9 +143,8 @@ class DieselGenerator:
                 p = load / k
                 if p < self.p_min:
                     break
-                u_candidate = np.array([1] * k + [0] * (n - k), dtype=int)
                 p_load = np.array([p] * k + [0] * (n - k), dtype=float)
-                running_count = u_candidate.sum()
+                u_candidate = np.array([1] * k + [0] * (n - k), dtype=int)
                 k += 1
 
             # Считаем полную стоимость
@@ -153,11 +152,13 @@ class DieselGenerator:
 
             # Сохраняем лучший вариант
             if cost < best_cost:
-                best_cost = cost
                 best_p = p_load
                 best_u = u_candidate
+                best_cost = cost
+        total_p = best_p.sum()
+        is_on = (u_prev > 0).sum()
 
-        return best_p, best_u, best_cost
+        return best_p, best_u, best_cost, total_p, is_on
 
 
 
