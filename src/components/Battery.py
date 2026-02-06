@@ -44,8 +44,8 @@ class Battery:
         self.eff_ch = eff_ch/100
         self.eff_ds = eff_ds / 100
         self.cp = cp/100
-        self.aux_p_ch = cp/100 * capacity + r_power_ch * (1 - eff_ch)
-        self.aux_p_ds = cp/100 * capacity + (r_power_ds - r_power_ds * eff_ds) / eff_ds
+        self.aux_p_ch = self.cp * capacity + r_power_ch * (1 - self.eff_ch)
+        self.aux_p_ds = self.cp * capacity + (r_power_ds - r_power_ds * self.eff_ds) / self.eff_ds
 
     def charge(self, net_power: float, soc: float) -> tuple[float, float, float]:
         """
