@@ -139,6 +139,9 @@ class DieselGenerator:
         if k > n:
             return False
         else:
+            if k < 1:
+                k = 1
+                load = self.p_min
             while k <= n:
                 p = load / k
                 if p < self.p_min:
