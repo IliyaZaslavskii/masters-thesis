@@ -102,8 +102,8 @@ class DieselGenerator:
         total_cons = np.zeros_like(generate_array, dtype=np.float64)
         # Маска для работающих генераторов
         mask = generate_array > 0
-
-        specific_cons[mask] = self.a1 * generate_array[mask] + self.a2 * self.r_capacity
+        L = generate_array[mask] / self.r_capacity # текущая загрузка ДГУ относительно номинальной мощности от 0 до 1
+        specific_cons[mask] = self.a1 * 1 / L + self.a2
         total_cons[mask] = specific_cons[mask] * generate_array[mask] / (p * k)
         return specific_cons, total_cons
 
