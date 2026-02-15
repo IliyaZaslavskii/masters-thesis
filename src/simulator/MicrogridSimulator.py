@@ -49,7 +49,7 @@ class MicrogridSimulator:
             'Номинальная энергоемкость (кВт·ч)'
         ]
 
-        def Simulator_1(self,
+        def simulator_1(self,
                 initial_soc: float,
                 u_dgs: Optional[np.ndarray] = None
                 ) -> Dict[str, np.ndarray]:
@@ -125,7 +125,7 @@ class MicrogridSimulator:
                 'cost_dgs_history': cost_dgs_history
             }
 
-        def Simulator_2(self,
+        def simulator_2(self,
                 initial_soc: float,
                 u_dgs: Optional[np.ndarray] = None
                 ) -> Dict[str, np.ndarray]:
