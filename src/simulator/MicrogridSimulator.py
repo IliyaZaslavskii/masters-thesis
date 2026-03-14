@@ -173,7 +173,7 @@ class MicrogridSimulator:
                 u_prev = np.zeros_like(u_dgs)
                 cost_dgs = self.dgs.total_cost(u_prev, u_dgs, u_prev,
                                                self.r_electricity)
-                p_dgs, u_dgs, total_p, is_on = 0, np.zero_like(u_dgs), 0, 0
+                p_dgs, u_dgs, total_p, is_on = 0, np.zeros_like(u_dgs), 0, 0
                 p_dgs_history[t] = total_p
                 cost_dgs_history[t] = cost_dgs
 
