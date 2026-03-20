@@ -115,7 +115,7 @@ class MicrogridSimulator:
                     )
                     p_dgs_history[t] = total_p
                     cost_dgs_history[t] = cost_dgs
-                    new_net_power[t] = net_power + p_dgs
+                    new_net_power[t] = net_power + total_p
 
             # Запись истории BESS
             p_bess_history[t] = p_bess
@@ -215,7 +215,7 @@ class MicrogridSimulator:
                     )
                     p_dgs_history[t] = total_p
                     cost_dgs_history[t] = cost_dgs
-                    new_net_power[t] = net_power + p_dgs
+                    new_net_power[t] = net_power + total_p
 
             # Запись истории BESS
             p_bess_history[t] = p_bess
@@ -233,3 +233,42 @@ class MicrogridSimulator:
             'cost_dgs_history': cost_dgs_history
         }
 
+    def simulator_3(self,
+                    u_dgs: Optional[np.ndarray]
+                    ) -> Dict[str, np.ndarray]:
+        # Инициализация массивов
+        new_gen = self.gen.copy()
+        new_net_power = np.zeros(self.n, dtype=np.float64)
+
+        p_dgs_history = np.zeros(self.n, dtype=np.float64)
+        cost_dgs_history = np.zeros(self.n, dtype=np.float64)
+
+        for t in range(self.n):
+
+            net_power = self.gen[t] - self.load[t]
+
+            if net_power >= 0:  # Энергия ФЭС больше или равна нагрузке
+                new_gen[t] = self.load[t]  # Ограничиваем генерацию
+                new_net_power[t] = 0.0  # Новый баланс мощности
+                # Отключение работающего генератора
+                u_prev = np.zeros_like(u_dgs)
+                cost_dgs = self.dgs.total_cost(u_prev, u_dgs, u_prev,
+                                               self.r_electricity)
+                p_dgs, u_dgs, total_p, is_on = 0, np.zeros_like(u_dgs), 0, 0
+                p_dgs_history[t] = total_p
+                cost_dgs_history[t] = cost_dgs
+
+            else: # Энергия ФЭС меньше нагрузки
+                p_dgs, u_dgs, cost_dgs, total_p, is_on = self.dgs.optimize_DGs(
+                        u_dgs, -net_power, self.r_electricity)
+                p_dgs_history[t] = total_p
+                cost_dgs_history[t] = cost_dgs
+                new_net_power[t] = net_power + total_p
+
+        return {
+            'new_gen': new_gen,
+            'new_net_power': new_net_power,
+            'final_u_dgs': u_dgs,
+            'p_dgs_history': p_dgs_history,
+            'cost_dgs_history': cost_dgs_history
+        }
