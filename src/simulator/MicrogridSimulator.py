@@ -12,7 +12,7 @@ class MicrogridSimulator:
                  gen_column: str,
                  bess: object,
                  dgs: object,
-                 r_electricity,
+                 r_electricity: float,
                  ):
         """
         Инициализация объекта АГЭК
@@ -51,7 +51,7 @@ class MicrogridSimulator:
 
     def simulator_1(self,
             initial_soc: float,
-            u_dgs: Optional[np.ndarray]
+            u_dgs: np.ndarray
             ) -> Dict[str, np.ndarray]:
 
         if not 0 <= initial_soc <= 1:
@@ -87,8 +87,7 @@ class MicrogridSimulator:
                     new_net_power[t] = 0.0  # Новый баланс мощности
                 #Отключение работающего генератора
                 u_prev = np.zeros_like(u_dgs)
-                cost_dgs = self.dgs.total_cost(u_prev, u_dgs, u_prev,
-                                           self.r_electricity)
+                cost_dgs = self.dgs.total_cost(u_prev, u_dgs, u_prev)
                 p_dgs, u_dgs, total_p, is_on = 0, np.zeros_like(u_dgs), 0, 0
 
                 p_dgs_history[t] = total_p
@@ -105,7 +104,7 @@ class MicrogridSimulator:
                         )  # Оптимальная загрузка генератора
                         p_dgs_history[t] = total_p
                         cost_dgs_history[t] = cost_dgs
-                        new_net_power[t] = total_p + p_bess  # Новый баланс мощности
+                        new_net_power[t] = net_power + p_bess + total_p  # Новый баланс мощности
 
                 else: # Разряд невозможен
                     p_bess = 0.0
@@ -135,7 +134,7 @@ class MicrogridSimulator:
 
     def simulator_2(self,
             initial_soc: float,
-            u_dgs: Optional[np.ndarray]
+            u_dgs: np.ndarray
             ) -> Dict[str, np.ndarray]:
 
         if not 0 <= initial_soc <= 1:
@@ -171,8 +170,7 @@ class MicrogridSimulator:
                     new_net_power[t] = 0.0  # Новый баланс мощности
                 # Отключение работающего генератора
                 u_prev = np.zeros_like(u_dgs)
-                cost_dgs = self.dgs.total_cost(u_prev, u_dgs, u_prev,
-                                               self.r_electricity)
+                cost_dgs = self.dgs.total_cost(u_prev, u_dgs, u_prev)
                 p_dgs, u_dgs, total_p, is_on = 0, np.zeros_like(u_dgs), 0, 0
                 p_dgs_history[t] = total_p
                 cost_dgs_history[t] = cost_dgs
@@ -205,7 +203,7 @@ class MicrogridSimulator:
                             p_bess, capacity_next, soc_next = p_candidate, c_candidate, s_candidate
                         p_dgs_history[t] = total_p
                         cost_dgs_history[t] = cost_dgs
-                        new_net_power[t] = total_p + p_bess  # Новый баланс мощности
+                        new_net_power[t] = net_power + p_bess + total_p  # Новый баланс мощности
 
                 else: # Разряд невозможен
                     p_bess = 0.0
@@ -234,7 +232,7 @@ class MicrogridSimulator:
         }
 
     def simulator_3(self,
-                    u_dgs: Optional[np.ndarray]
+                    u_dgs: np.ndarray
                     ) -> Dict[str, np.ndarray]:
         # Инициализация массивов
         new_gen = self.gen.copy()
@@ -252,8 +250,7 @@ class MicrogridSimulator:
                 new_net_power[t] = 0.0  # Новый баланс мощности
                 # Отключение работающего генератора
                 u_prev = np.zeros_like(u_dgs)
-                cost_dgs = self.dgs.total_cost(u_prev, u_dgs, u_prev,
-                                               self.r_electricity)
+                cost_dgs = self.dgs.total_cost(u_prev, u_dgs, u_prev)
                 p_dgs, u_dgs, total_p, is_on = 0, np.zeros_like(u_dgs), 0, 0
                 p_dgs_history[t] = total_p
                 cost_dgs_history[t] = cost_dgs
