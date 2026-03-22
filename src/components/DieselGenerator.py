@@ -43,6 +43,7 @@ class DieselGenerator:
         # Основные параметры
         # Basic parameters
         self.num_DGs = num_DGs
+        self.n = num_DGs
         self.r_capacity = r_capacity # Номинальная мощность, кВт
         self.a1 = a1
         self.a2 = a2
@@ -55,7 +56,7 @@ class DieselGenerator:
         # Состояние массива генераторов
         # Status of the generator array
         self.power_outputs = np.ones(num_DGs)
-        self.n = self.power_outputs.size# Количество генераторо
+
 
 
     def get_DGs(self) -> np.ndarray:
@@ -71,7 +72,7 @@ class DieselGenerator:
         """
         return self.power_outputs * self.r_capacity
 
-    def calculate_fuel_consumption(self, generate_array: np.ndarray, p: float = 860.0, k: float = 1.45) -> Tuple[np.ndarray,np.ndarray]:
+    def calculate_fuel_consumption(self, generate_array: np.ndarray,p: float = 860.0, k: float = 1.45) -> Tuple[np.ndarray,np.ndarray]:
         """
         Зависимость расхода топлива от номинальной мощности и текущей нагрузки ДГУ
         The fuel consumption of the diesel generator (DG)
@@ -107,7 +108,7 @@ class DieselGenerator:
         total_cons[mask] = specific_cons[mask] * generate_array[mask] / (p * k)
         return specific_cons, total_cons
 
-    def total_cost(self, power: np.ndarray, u: np.ndarray, u_prev: np.ndarray, r_electricity: float) -> float:
+    def total_cost(self, power: np.ndarray, u: np.ndarray, u_prev: np.ndarray) -> float:
         """
         Полная стоимость: топливо + старт/стоп
         Параметры (Parameters)
@@ -121,13 +122,10 @@ class DieselGenerator:
         u_prev: np.ndarray
             Предыдущее состояние генераторов (1 - вкл, 0 - выкл).
             Previous status of generators (1 - on, 0 - off).
-        r_electricity: float
-            Тариф на электроэнергию, руб./кВт·ч.
-            Electricity tariff, RUB/kWh.
         """
         # Расчет стоимости топлива
         _, fuel_cons = self.calculate_fuel_consumption(power)
-        fuel_cost = np.sum(fuel_cons) * r_electricity
+        fuel_cost = np.sum(fuel_cons) * self.fuel_price
         # Расчет штрафа за старт/стоп
         start_penalty = np.sum(self.start_stop_price * np.maximum(0, u - u_prev))
         # Общая стоимость
@@ -166,35 +164,37 @@ class DieselGenerator:
                 Количество работающих генераторов.
         """
         n = self.n
-        best_p = None
-        best_u = None
+        best_p = np.zeros(n, dtype=np.float64)
+        best_u = np.zeros(n, dtype=np.int64)
         best_cost = np.inf
 
-        k = round(load / self.p_max)
-        if k > n:
+        if load > n * self.p_max:
             raise ValueError(
-                f"Требуемая нагрузка {load} кВт превышает максимальную\nмощность системы {n * self.p_max} кВт"
+                f"Требуемая нагрузка {load} кВт превышает максимальную "
+                f"мощность системы {n * self.p_max} кВт"
             )
-        else:
-            if k < 1:
-                k = 1
-                load = self.p_min
-            while k <= n:
-                p = load / k
-                if p < self.p_min:
-                    break
-                p_load = np.array([p] * k + [0] * (n - k), dtype=np.float64)
-                u_candidate = np.array([1] * k + [0] * (n - k), dtype=np.int64)
-                k += 1
+        k = round(load / self.p_max)
+        if k < 1:
+            k = 1
+            load = self.p_min
 
-            # Считаем полную стоимость
-            cost = self.total_cost(p_load, u_candidate, u_prev, r_electricity)
+        while k <= n:
+            p = load / k
+            if p < self.p_min:
+                break
+            p_load = np.zeros(n, dtype=np.float64)
+            p_load[:k] = p
 
-            # Сохраняем лучший вариант
+            u_candidate = np.zeros(n, dtype=np.int64)
+            u_candidate[:k] = 1
+
+            cost = self.total_cost(p_load, u_candidate, u_prev)
             if cost < best_cost:
-                best_p = p_load
-                best_u = u_candidate
+                best_p = p_load.copy()
+                best_u = u_candidate.copy()
                 best_cost = cost
+            k += 1
+
         total_p = best_p.sum()
         is_on = (u_prev > 0).sum()
 
