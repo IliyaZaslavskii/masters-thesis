@@ -12,12 +12,12 @@ class Economy:
                  capex,
                  opex,
                  cash_inflow):
-        costi = np.hstack([np.sum(capex), opex])
+        costi = np.hstack([capex, opex])
         P_pv = np.tile((cash_inflow), self.life_span)
         revenues = np.sum(np.reshape(P_pv, (self.life_span, -1)), axis=1)
         fcf = np.hstack([0, revenues]) - costi
         npv = np.array([npf.npv(self.discountRate, fcf[:i]) for i in
-                        np.arange(1, self.life_span + 2)])
+                        np.arange(1, self.life_span + 2)])      
         npc = np.array([npf.npv(self.discountRate, costi[:i]) for i in
                         np.arange(1, self.life_span + 2)])
         irr = npf.irr(fcf)
