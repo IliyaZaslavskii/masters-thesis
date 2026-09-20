@@ -1,0 +1,23 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv1/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+
+# CSV
+*.csv
+
+# Все ноутбуки, кроме SolarGeneration
+*.ipynb
+!src/tests/SolarGeneration.ipynb
+
+# Графики
+src/plots/

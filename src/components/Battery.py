@@ -61,8 +61,8 @@ class Battery:
         self.cp = cp / 100  # от 0 до 1
         # Расчетные параметры
         # Calculated parameters
-        self.aux_p_ch = self.cp * capacity + r_power_ch * (1 - self.eff_ch)
-        self.aux_p_ds = self.cp * capacity + (r_power_ds - r_power_ds * self.eff_ds) / self.eff_ds
+        self.aux_p_ch = self.cp * self.capacity + self.r_power_ch * (1 - self.eff_ch)
+        self.aux_p_ds = self.cp * self.capacity + (self.r_power_ds - self.r_power_ds * self.eff_ds) / self.eff_ds
 
     def get_passport_parameters(self) -> dict:
         """
@@ -73,16 +73,18 @@ class Battery:
         dict
         """
         return {
-            "Номинальная энергоемкость (кВт·ч)": self.capacity,
-            "Максимальная степень заряда (СЗ_макс), %": self.soc_max * 100,
-            "Минимальная степень заряда (СЗ_мин), %": self.soc_min * 100,
-            "Номинальная мощность заряда, кВт": self.r_power_ch,
-            "Номинальная мощность разряда, кВт": self.r_power_ds,
-            "Эффективность заряда, %": self.eff_ch * 100,
-            "Эффективность разряда, %": self.eff_ds * 100,
-            "Коэффициент саморазряда, %": self.cp * 100,
-            "Потери мощности при заряде, кВт": self.aux_p_ch,
-            "Потери мощности при разряде, кВт": self.aux_p_ds
+            "Номинальная энергоемкость, кВт·ч": round(self.capacity, 2),
+            "Максимальная степень заряда (СЗ_макс), %": round(self.soc_max *
+                                                              100, 2),
+            "Минимальная степень заряда (СЗ_мин), %": round(self.soc_min *
+                                                            100, 2),
+            "Номинальная мощность заряда, кВт": round(self.r_power_ch, 2),
+            "Номинальная мощность разряда, кВт": round(self.r_power_ds, 2),
+            "Эффективность заряда, %": round(self.eff_ch * 100, 2),
+            "Эффективность разряда, %": round(self.eff_ds * 100, 2),
+            "Коэффициент саморазряда, %": round(self.cp * 100, 2),
+            "Потери мощности при заряде, кВт": round(self.aux_p_ch, 2),
+            "Потери мощности при разряде, кВт": round(self.aux_p_ds, 2)
         }
 
 
@@ -109,18 +111,22 @@ class Battery:
                 Доступная энергия после заряда.
                 Available energy after charging.
             soc_new: float
-                Доступный уровень СЗ после заряда..
+                Доступный уровень СЗ после заряда.
+            aux: float
+                Потери, кВт
         """
 
         if net_power <= self.aux_p_ch:
             p_ch = 0.0
             e_new = self.capacity * soc
             soc_new = soc
+            aux = 0.0
         else:
             ava_e = min(net_power, self.r_power_ch) # New available energy capacity
             p_ch = - min(self.capacity * (self.soc_max - soc) / self.eff_ch + self.cp * self.capacity, ava_e)
             e_new = self.capacity * soc - p_ch * self.eff_ch - self.cp * self.capacity # New available energy capacity
             soc_new = e_new / self.capacity
+            aux = self.cp * self.capacity + p_ch * (1 - self.eff_ch)
         return p_ch, e_new, soc_new
 
     def discharge(self, net_power: float, soc: float) -> tuple[float, float, float]:
@@ -153,11 +159,13 @@ class Battery:
             p_ds = 0.0
             e_new = self.capacity * soc
             soc_new = soc
+            aux = 0.0
         else:
             ava_e = min(net_power, self.r_power_ds) # Available energy capacity
             p_ds =min(self.capacity * (soc - self.soc_min) * self.eff_ds - self.cp * self.capacity, ava_e)
             e_new = self.capacity * soc - p_ds / self.eff_ds - self.cp * self.capacity  # New available energy capacity
             soc_new = e_new / self.capacity
+            aux = self.cp * self.capacity + (p_ds - p_ds * self.eff_ds) / self.eff_ds
         return p_ds, e_new, soc_new
 
 
@@ -180,9 +188,9 @@ class Battery:
         match (soc, self.soc_max, self.soc_min):
             case (soc, max_soc, min_soc) if min_soc < soc < max_soc:
                 return 'Заряд и Разряд возможен'
-            case (soc, max_soc, _) if soc == max_soc:
-                return 'Заряд невозможен'
-            case (soc, _, min_soc) if soc == min_soc:
-                return 'Разряд невозможен'
+            case (soc, max_soc, _) if soc >= max_soc:
+                return 'Возможен только разряд'
+            case (soc, _, min_soc) if soc <= min_soc:
+                return 'Возможен только заряд'
             case _:
                 return 'Выключен'
