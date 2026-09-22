@@ -1,20 +1,20 @@
+"""Diesel-generator dispatch and fuel-consumption model."""
+
+from __future__ import annotations
+
+from itertools import combinations
 from typing import Tuple
+
 import numpy as np
-import math as m
+
 
 class DieselGenerator:
-    """
-    Класс моделирования работы дизель-генератора
-    A class that models a diesel generator (DG).
-    """
+    """Класс моделирования работы дизель-генератора
+       A class that models a diesel generator (DG)."""
 
-    def __init__(self,
-            num_DGs: int,
-            gen_capacity: float,
-            a1: float,
-            a2: float,
-            fuel_price: float
-            ):
+    def __init__(self, num_dgs: int | None = None, gen_capacity: float | None = None,
+                 a1: float | None = None, a2: float | None = None,
+                 fuel_price: float | None = None, **legacy: float) -> None:
         """
         Инициализация объекта дизель-генераторной системы
         Initialization of the diesel generator system object.
@@ -37,198 +37,164 @@ class DieselGenerator:
             Стоимость ДТ, руб./кг
             The cost of a kg of fuel, RUB/kg.
         """
-        # Основные параметры
-        # Basic parameters
-        self.n = num_DGs
-        self.gen_capacity = gen_capacity # Установленная мощность, кВт
-        self.a1 = a1
-        self.a2 = a2
-        # self.start_stop_price = start_stop_price
-        self.fuel_price = fuel_price
+        if num_dgs is None:
+            num_dgs = legacy.pop("num_DGs", None)
+        if legacy or any(value is None for value in (num_dgs, gen_capacity, a1, a2, fuel_price)):
+            raise TypeError("DieselGenerator requires fleet and fuel parameters")
+        if num_dgs < 1 or int(num_dgs) != num_dgs:
+            raise ValueError("num_dgs must be a positive integer")
+        if gen_capacity <= 0 or a1 < 0 or a2 < 0 or fuel_price < 0:
+            raise ValueError("Generator capacity and coefficients must be non-negative")
+        self.n = int(num_dgs)
         # Расчетные параметры
         # Calculated parameters
-        self.p_min = 0.35 * self.gen_capacity
-        self.p_max = 0.95 * self.gen_capacity
-        # Состояние массива генераторов
-        # Status of the generator array
-        self.power_outputs = np.ones(self.n)
+        self.gen_capacity, self.a1, self.a2, self.fuel_price = gen_capacity, a1, a2, fuel_price
+        self.p_min, self.p_max = 0.35 * gen_capacity, 0.95 * gen_capacity
+        self.power_outputs = np.ones(self.n, dtype=float)
 
+    def get_parameters(self) -> Tuple[np.ndarray, int]:
+        """Получить массив дизель-генераторов
+           Get an array of diesel generators.
+           """
+        return self.power_outputs * self.gen_capacity, self.n
 
+    def calculate_fuel_consumption(self, generate_array: np.ndarray,
+                                   fuel_density: float = 860.0,
+                                   lower_heating_value: float = 43.2,
+                                   **legacy: float
+                                   ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Зависимость расхода топлива от номинальной мощности и текущей нагрузки ДГУ
+           The fuel consumption of the diesel generator (DG).
 
-    def get_parameters(self) -> np.ndarray:
-        """
-        Получить массив дизель-генераторов
-        Get an array of diesel generators
+           Параметры (Parameters)
+            ----------
+            generate_array: np.ndarray
+                Массив мощностей генераторов, кВт
+                Array of diesel generator power outputs, kW
+            p : float, optional
+                Плотность топлива, по умолчанию 860 кг/м3
+                Fuel density, default 860 kg/m3
+            LHV : float, optional
+                Низшая теплота сгорания, по умолчанию 43.2 МДж/кг
+                Lower Heating Value, default 43.2 MJ/kg
 
-        Возвращает (Returns)
-        ----------
-        np.ndarray:
-            Массив генераторов в кВт.
-        num_DGs: int
-            Количество генераторов, шт.
-            Number of diesel generators, pcs.
-        """
-        gen_set = self.power_outputs * self.gen_capacity
+            Возвращает (Returns)
+            ----------
+            Tuple[np.ndarray, np.ndarray, np.ndarray]:
+                sfc: np.ndarray
+                    Удельный расход условного топлива, о.е.
+                    Specific fuel consumption, l/kWh
+                afc: np.ndarray
+                    Абсолютный расход топлива, кг
+                    Absolute fuel consumption, kg
+                efficiency: np.ndarray
+                    Электрический КПД ДГУ, о.е. (0..1). Для генераторов,
+                    не несущих нагрузку (generate_array <= 0), КПД равен 0.
+                    Electrical efficiency of the DG, p.u. (0..1). For idle
+                    generators (generate_array <= 0), efficiency is 0."""
+        fuel_density = legacy.pop("p", fuel_density)
+        lower_heating_value = legacy.pop("LHV", lower_heating_value)
+        if legacy:
+            raise TypeError(f"Unexpected arguments: {', '.join(legacy)}")
+        power = np.asarray(generate_array, dtype=float)
+        if np.any(power < 0) or np.any(power > self.gen_capacity):
+            raise ValueError("Generator output must be in [0, gen_capacity]")
+        if fuel_density <= 0 or lower_heating_value <= 0:
+            raise ValueError("Fuel density and lower heating value must be positive")
+        sfc = np.zeros_like(power)
+        afc = np.zeros_like(power)
+        efficiency = np.zeros_like(power)
+        active = power > 0
+        load_fraction = power[active] / self.gen_capacity # текущая загрузка ДГУ относительно номинальной мощности от 0 до 1
+        sfc[active] = self.a1 / load_fraction + self.a2
+        afc[active] = fuel_density * sfc[active] * power[active] * 1e-3
+        efficiency[active] = 3.6 * power[active] / (afc[active] * lower_heating_value)
+        return sfc, afc, efficiency
 
-        return gen_set, self.n
+    def total_cost(self, power: np.ndarray, u: np.ndarray,
+                   u_prev: np.ndarray) -> float:
+        """ Возвращает полную стоимость топлива
+            Return fuel cost for a dispatch.
 
-    def calculate_fuel_consumption(self, generate_array: np.ndarray,p: float
-    = 860.0, LHV: float = 43.2) -> Tuple[np.ndarray,np.ndarray]:
-        """
-        Зависимость расхода топлива от номинальной мощности и текущей нагрузки ДГУ
-        The fuel consumption of the diesel generator (DG)
-        Параметры (Parameters)
-        ----------
-        generate_array: np.ndarray
-            Массив мощностей генераторов, кВт
-            Array of diesel generator power outputs, kW
-        p : float, optional
-            Плотность топлива, по умолчанию 860 кг/м3
-            Fuel density, default 860 kg/m3
-        LHV : float, optional
-            Низшая теплота сгорания, по умолчанию 43.2 МДж/кг
-            Lower Heating Value, default 43.2 MJ/kg
+            Параметры (Parameters)
+            ----------
+            power: np.ndarray
+                Мощность генераторов, кВт.
+                Power of generators, kW.
+            u: np.ndarray
+                Текущее состояние генераторов (1 - вкл, 0 - выкл).
+                The current status of the generators (1 - on, 0 - off).
+            u_prev: np.ndarray
+                Предыдущее состояние генераторов (1 - вкл, 0 - выкл).
+                Previous status of generators (1 - on, 0 - off)."""
+        _, fuel_consumption, _ = self.calculate_fuel_consumption(power)
+        return float(np.sum(fuel_consumption) * self.fuel_price)
 
-        Возвращает (Returns)
-        ----------
-        Tuple[np.ndarray, np.ndarray, np.ndarray]:
-            SFC: np.ndarray
-                Удельный расход условного топлива, о.е.
-                Specific fuel consumption, l/kWh
-            AFC: np.ndarray
-                Абсолютный расход топлива, кг
-                Absolute fuel consumption, kg
-            EFF: np.ndarray
-                Электрический КПД ДГУ, о.е. (0..1). Для генераторов,
-                не несущих нагрузку (generate_array <= 0), КПД равен 0.
-                Electrical efficiency of the DG, p.u. (0..1). For idle
-                generators (generate_array <= 0), efficiency is 0.
-        """
-        # Инициализация массивов
-        SFC = np.zeros_like(generate_array, dtype=np.float64)
-        AFC = np.zeros_like(generate_array, dtype=np.float64)
-        EFF = np.zeros_like(generate_array, dtype=np.float64)
-        # Маска для работающих генераторов
-        mask = generate_array > 0
-        L = generate_array[mask] / self.gen_capacity # текущая загрузка ДГУ относительно номинальной мощности от 0 до 1
-        SFC[mask] = self.a1 * 1 / L + self.a2
-        AFC[mask] = p * SFC[mask] * generate_array[mask] * 1e-3
-        EFF[mask] = (3.6 * generate_array[mask]) / (AFC[mask] * LHV)
-        return SFC, AFC, EFF
+    def optimize_dgs(self, previous_status: np.ndarray, load: float
+                     ) -> Tuple[np.ndarray, np.ndarray, float, float, int]:
+        """Оптимизация распределения нагрузки между генераторами.
+           Optimization of generator load distribution.
 
-    def total_cost(self, power: np.ndarray, u: np.ndarray, u_prev: np.ndarray) -> float:
-        """
-        Полная стоимость: топливо + старт/стоп
-        Параметры (Parameters)
-        ----------
-        power: np.ndarray
-            Мощность генераторов, кВт.
-            Power of generators, kW.
-        u: np.ndarray
-            Текущее состояние генераторов (1 - вкл, 0 - выкл).
-            The current status of the generators (1 - on, 0 - off).
-        u_prev: np.ndarray
-            Предыдущее состояние генераторов (1 - вкл, 0 - выкл).
-            Previous status of generators (1 - on, 0 - off).
-        """
-        # Расчет стоимости топлива
-        _, fuel_cons, _ = self.calculate_fuel_consumption(power)
-        fuel_cost = np.sum(fuel_cons) * self.fuel_price
-        # Расчет штрафа за старт/стоп
-        # start_penalty = np.sum(self.start_stop_price * np.maximum(0, u - u_prev))
-        # Общая стоимость
-        return fuel_cost
+           Параметры (Parameters)
+           ----------
+           u_prev: np.ndarray
+               Предыдущее состояние генераторов (1 - вкл, 0 - выкл).
+               Previous status of generators (1 - on, 0 - off).
+           load: float
+               Требуемая мощность нагрузки, кВт
+               Electrical load, kW
 
-    def optimize_DGs(self, u_prev: np.ndarray,
-                                         load: float) -> Tuple[np.ndarray, np.ndarray, float, float, int]:
-        """
-        Оптимизация распределения нагрузки между генераторами.
-        Optimization of generator load distribution.
-
-        Параметры (Parameters)
-        ----------
-        u_prev: np.ndarray
-            Предыдущее состояние генераторов (1 - вкл, 0 - выкл).
-            Previous status of generators (1 - on, 0 - off).
-        load: float
-            Требуемая мощность нагрузки, кВт
-            Electrical load, kW
-
-        Возвращает (Returns)
-        -----------
-        Tuple[np.ndarray, np.ndarray, float, float, int]:
-            best_p: np.ndarray
-                Оптимальное распределение мощностей, кВт
-            best_u: np.ndarray
-                Оптимальное состояние генераторов
-            best_cost: np.ndarray
-                Минимальная стоимость работы, руб
-            total_p: float
-                Суммарная выдаваемая мощность, кВт
-            is_on: int
-                Количество работающих генераторов.
-        """
-        n = self.n
-
-        if load > n * self.p_max:
-            raise ValueError(
-                f"Требуемая нагрузка {load} кВт превышает максимальную "
-                f"мощность системы {n * self.p_max} кВт"
-            )
-        best_p = np.zeros(n, dtype=np.float64)
-        best_u = np.zeros(n, dtype=np.int64)
-        best_cost = np.inf
-
-        k_min = max(1, m.ceil(load / self.p_max))
-        # if k < 1:
-        #     k = 1
-        #     load = self.p_min
-
-        for k in range(k_min, n + 1):
-            p = load / k
-            p_per_gen = max(self.p_min, min(self.p_max, p))
-            p_load = np.zeros(n, dtype=np.float64)
-            p_load[:k] = p_per_gen
-
-            u_candidate = np.zeros(n, dtype=np.int64)
-            u_candidate[:k] = 1
-
-            total_p = p_load.sum()
-
-            if total_p < load:
+           Возвращает (Returns)
+           -----------
+           Tuple[np.ndarray, np.ndarray, float, float, int]:
+               powers: np.ndarray
+                   Оптимальное распределение мощностей, кВт
+               statuses: np.ndarray
+                   Оптимальное состояние генераторов
+               cost: np.ndarray
+                   Минимальная стоимость работы, руб
+               powers: float
+                   Суммарная выдаваемая мощность, кВт
+               statuses: int
+                   Количество работающих генераторов."""
+        previous_status = np.asarray(previous_status)
+        if previous_status.shape != (self.n,):
+            raise ValueError(f"previous_status must contain {self.n} values")
+        if load < 0:
+            raise ValueError("load must be non-negative")
+        if load > self.n * self.p_max:
+            raise ValueError(f"load {load} exceeds fleet capacity {self.n * self.p_max}")
+        if load == 0:
+            return self._shutdown_dgs(previous_status)
+        best = None
+        minimum_units = max(1, int(np.ceil(load / self.p_max)))
+        for units in range(minimum_units, self.n + 1):
+            unit_power = max(self.p_min, min(self.p_max, load / units))
+            powers = np.zeros(self.n)
+            powers[:units] = unit_power
+            if powers.sum() + 1e-9 < load:
                 continue
+            statuses = np.zeros(self.n, dtype=int)
+            statuses[:units] = 1
+            candidate = (self.total_cost(powers, statuses, previous_status), powers, statuses)
+            if best is None or candidate[0] < best[0]:
+                best = candidate
+        if best is None:
+            raise RuntimeError("No feasible generator dispatch was found")
+        cost, powers, statuses = best
+        return powers, statuses, float(cost), float(powers.sum()), int(statuses.sum())
 
-            cost = self.total_cost(p_load, u_candidate, u_prev)
-            if cost < best_cost:
-                best_p = p_load.copy()
-                best_u = u_candidate.copy()
-                best_cost = cost
+    # Legacy method name retained for existing notebooks.
+    optimize_DGs = optimize_dgs
 
-
-        total_p = best_p.sum()
-        is_on = (best_u > 0).sum()
-
-        return best_p, best_u, best_cost, total_p, is_on
-
-    def _restriction_dgs(self, val_dgs: np.ndarray, net_power: float):
-        """Ограничение ДГУ и расчет стоимости этого действия
-           Restricting the DSU and calculating the cost of this action
-        """
-        best_p, best_u, best_cost, total_p, is_on = self.optimize_DGs(
-            val_dgs, load= 0.0)
-        shunt_gen = np.maximum(0, net_power - total_p)
-        new_gen = net_power - shunt_gen
-        return best_p, best_u, best_cost, total_p, is_on, new_gen, shunt_gen
-
-    def _shutdown_dgs(self, val_dgs: np.ndarray) -> Tuple[np.ndarray, float]:
+    def _shutdown_dgs(self, previous_status: np.ndarray):
         """Остановка ДГУ и расчет стоимости этого действия
-           Stopping diesel generators and calculating the cost of this action
-        """
-        best_u = np.zeros_like(val_dgs)
-        best_cost = self.total_cost(best_u, val_dgs, best_u)
-        best_p, total_p, is_on = 0, 0, 0
-        return best_p, best_u, best_cost, total_p, is_on
+           Stopping diesel generators and calculating the cost of this action."""
+        previous_status = np.asarray(previous_status)
+        statuses = np.zeros(self.n, dtype=int)
+        powers = np.zeros(self.n)
+        return powers, statuses, self.total_cost(powers, statuses, previous_status), 0.0, 0
 
-
-
-
+    def shutdown(self, previous_status: np.ndarray):
+        """Public, descriptive alias for the legacy shutdown helper."""
+        return self._shutdown_dgs(previous_status)
