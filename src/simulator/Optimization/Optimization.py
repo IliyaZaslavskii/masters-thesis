@@ -1,68 +1,53 @@
-import numpy as np
+"""pymoo problem definition for battery capacity/power search."""
+
+from __future__ import annotations
+
+from typing import Callable, Optional, Sequence
+
 from pymoo.core.problem import ElementwiseProblem
-from pymoo.core.variable import Integer, Choice
+from pymoo.core.variable import Choice, Integer
+
 
 class OptProblem(ElementwiseProblem):
-    def __init__(self, obj, lb, ub, iter_log=False):
-        self.obj = obj
-        self.iter_log = iter_log
-        self.best_val = float('inf')
-        self.iter = 0
-        self.best_parms = None
-        self.history_best_val = []
+    """Optimize integer battery capacity and a discrete power ratio."""
+
+    def __init__(self, objective: Callable[[Sequence[float]], object], lower_bound: int,
+                 upper_bound: int, iteration_log_interval: Optional[int] = None) -> None:
+        """Configure search variables and objective-history storage."""
+        if lower_bound <= 0 or upper_bound < lower_bound:
+            raise ValueError("Bounds must satisfy 0 < lower_bound <= upper_bound")
+        if iteration_log_interval is not None and iteration_log_interval <= 0:
+            raise ValueError("iteration_log_interval must be positive")
+        self.objective = objective
+        self.iteration_log_interval = iteration_log_interval
+        self.iteration = 0
+        self.best_value = float("inf")
+        self.best_parameters = None
+        self.history_best_value = []
         self.history_best_metrics = []
+        super().__init__(vars={"x0": Integer(bounds=(lower_bound, upper_bound)),
+                               "C1": Choice(options=[0.5, 1.0])}, n_obj=1,
+                         n_ieq_constr=0, n_eq_constr=0)
 
-        raw_x1 = [0.5, 1]
-        vars = {
-            "x0": Integer(bounds=(lb, ub)),
-            "C1": Choice(options=raw_x1)
-        }
-        super().__init__(vars=vars, n_obj=1, n_ieq_constr=0, n_eq_constr=0)
-
-    def _evaluate(self, X, out, *args, **kwargs):
-
-        x0 = X["x0"]
-        C = X["C1"]
-        x1 = x0 * C
-        f = self.obj([x0, x1])
-
-        if isinstance(f, tuple):
-            lcos, npv_last, irr, h = f
+    def _evaluate(self, variables: dict, output: dict, *args, **kwargs) -> None:
+        """Evaluate one candidate and update monotonic best-so-far history."""
+        capacity, ratio = float(variables["x0"]), float(variables["C1"])
+        power = capacity * ratio
+        result = self.objective([capacity, power])
+        if hasattr(result, "lcos"):
+            metrics = {"lcos": result.lcos, "npv_last": result.npv, "irr": result.irr, "h": result.hours}
+        elif isinstance(result, tuple):
+            metrics = dict(zip(("lcos", "npv_last", "irr", "h"), result))
         else:
-            lcos, npv_last, irr, h = f, None, None, None
-
-        out["F"] = lcos
-
-        if self.iter == 0:
-            self.best_val = lcos
-        if lcos <= self.best_val:
-            self.best_val = lcos
-            self.best_parms = [x0, x1]
-            self.best_metrics = {
-                'iter': self.iter,
-                'lcos': lcos,
-                'lcos_usdt_mwh': lcos * 1e6 / 85,
-                'npv_last': npv_last,
-                'irr': irr,
-                'h': h,
-                'x0': x0,
-                'x1': x1,
-            }
-        self.history_best_val.append(self.best_val)
-        self.history_best_metrics.append(dict(self.best_metrics))
-        if self.iter_log and (self.iter % self.iter_log == 0):
-            npv_str = f'{npv_last:.1f}' if npv_last is not None else 'N/A'
-            irr_str = f'{irr * 100:.2f} %' if irr is not None else 'N/A'
-            h_str = str(int(h)) if h is not None else 'N/A'
-            print(
-                f'[{self.iter:>4}]'
-                f'LCOS={lcos * 1e3:.3f} руб/кВт·ч '
-                f'({lcos * 1e6 / 85:.2f} $/MWh) | '
-                f'NPV={npv_str} тыс.руб | '
-                f'IRR={irr_str} | '
-                f'Δh={h_str} ч | '
-                f'x0={x0} кВт·ч  x1={x1:.1f} кВт | '
-                f'best={self.best_val * 1e3:.3f}'
-            )
-
-        self.iter += 1
+            metrics = {"lcos": float(result), "npv_last": None, "irr": None, "h": None}
+        lcos = float(metrics["lcos"])
+        output["F"] = lcos
+        if lcos <= self.best_value:
+            self.best_value = lcos
+            self.best_parameters = [capacity, power]
+            metrics.update({"iter": self.iteration, "x0": capacity, "x1": power})
+        self.history_best_value.append(self.best_value)
+        self.history_best_metrics.append(dict(metrics))
+        if self.iteration_log_interval and self.iteration % self.iteration_log_interval == 0:
+            print(f"[{self.iteration:>4}] LCOS={lcos * 1e3:.3f} руб/кВт·ч; best={self.best_value * 1e3:.3f}")
+        self.iteration += 1

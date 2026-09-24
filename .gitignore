@@ -17,6 +17,8 @@ venv/
 
 # Все ноутбуки, кроме SolarGeneration
 *.ipynb
+!src/tests/test.ipynb
+!src/tests/optim.ipynb
 !src/tests/SolarGeneration.ipynb
 
 # Графики

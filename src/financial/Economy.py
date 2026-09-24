@@ -1,180 +1,104 @@
-import numpy_financial as npf
+"""Discounted cash-flow metrics used by the optimization layer."""
+
+from __future__ import annotations
+
+from typing import Sequence, Tuple
+
 import numpy as np
+import numpy_financial as npf
+
+
 class Economy:
-    def __init__(self,
-                 life_span: int,
-                 discountRate: float,
-                 ):
-        self.life_span = life_span
-        self.discountRate = discountRate
+    """Calculate NPV, IRR, LCOS and LCOE for a fixed project lifetime."""
 
-    def npv_calc(self,
-                 capex,
-                 opex,
-                 cash_inflow,
-                 i,
-                 e):
-        opex = [opex[t] * ((1 + i) ** t) for t in range(self.life_span)]
-        revenues = np.array([
-            cash_inflow * (1 + e) ** t
-            for t in range(self.life_span)
-        ])
-        fcf = np.concatenate((
-            [-capex],
-            revenues - opex
-        ))
-        costs = np.concatenate((
-            [capex],
-            opex
-        ))
+    def __init__(self, life_span: int, discount_rate: float) -> None:
+        """Create a model and validate the horizon and discount rate."""
+        if life_span < 1:
+            raise ValueError("life_span must be positive")
+        if discount_rate <= -1:
+            raise ValueError("discount_rate must be greater than -1")
+        self.life_span = int(life_span)
+        self.discount_rate = float(discount_rate)
+        self.discountRate = self.discount_rate  # legacy attribute
 
-        npv = np.array([
-            npf.npv(self.discountRate, fcf[:i + 1])
-            for i in range(self.life_span + 1)
-        ])
-        npc = np.array([
-            npf.npv(self.discountRate, costs[:i + 1])
-            for i in range(self.life_span + 1)
-        ])
-        irr = npf.irr(fcf)
+    def _validate_series(self, values: Sequence[float], name: str) -> np.ndarray:
+        """Convert a series to a finite vector of the configured length."""
+        array = np.asarray(values, dtype=float)
+        if array.size != self.life_span:
+            raise ValueError(f"{name} must contain {self.life_span} values")
+        if not np.all(np.isfinite(array)):
+            raise ValueError(f"{name} contains non-finite values")
+        return array
 
+    def npv_calc(self, capex: float, opex: Sequence[float], cash_inflow: float,
+                 inflation: float, escalation: float) -> Tuple[np.ndarray, np.ndarray, float]:
+        """Return cumulative NPV, cumulative cost and project IRR."""
+        if capex < 0:
+            raise ValueError("capex must be non-negative")
+        operating_cost = self._validate_series(opex, "opex")
+        years = np.arange(self.life_span)
+        operating_cost = operating_cost * (1 + inflation) ** years
+        revenues = cash_inflow * (1 + escalation) ** years
+        cash_flow = np.concatenate(([-capex], revenues - operating_cost))
+        costs = np.concatenate(([capex], operating_cost))
+        npv = np.array([npf.npv(self.discount_rate, cash_flow[:index + 1])
+                        for index in range(self.life_span + 1)])
+        npc = np.array([npf.npv(self.discount_rate, costs[:index + 1])
+                        for index in range(self.life_span + 1)])
+        irr = float(npf.irr(cash_flow)) if np.any(cash_flow > 0) else float("nan")
         return npv, npc, irr
 
-    def LCOS_canon(self,
-                 capex,
-                 opex,
-                  kWh,
-                  i
-                   ):
-        """
-        Нормированная стоимость накопления энергии
-        Levelized cost of storage
+    def _levelized_cost(self, capex: float, yearly_costs: np.ndarray,
+                        yearly_energy: float) -> float:
+        """Discount costs and energy using the same project horizon."""
+        if capex < 0 or yearly_energy <= 0:
+            raise ValueError("capex must be non-negative and energy must be positive")
+        discount = (1 + self.discount_rate) ** np.arange(1, self.life_span + 1)
+        return float((capex + np.sum(yearly_costs / discount)) /
+                     np.sum(yearly_energy / discount))
 
-        Параметры (Parameters)
-        ----------
-        capex: float
-            Капитальные затраты, тыс. руб.
-            Total capital costs, thousand rubles.
-        opex: float
-            Затраты на эксплуатацию и техническое обслуживание за время t,
-            тыс. руб.
-            Operating and maintenance costs over time t, thousand rubles.
-        kWh: float
-            Количество энергии, произведенной СНЭЭ для выравнивания графика
-            нагрузки, кВт·ч
-            The amount of electricity delivered by the ESS over time t, kWh.
-        s: float
-            Сокращение затрат на топливо, тыс. руб
-        i: float
-            Темп инфляции, отн. ед.
-            Inflation, p.u.
-        e: float
-            Темп ежегодного изменения стоимости топлива, отн. ед.
-            The annual coefficient of correction of the cost of fuel, p.u.
+    def LCOS_canon(self, capex: float, opex: Sequence[float], kWh: float,
+                   i: float) -> float:
+        """ Нормированная стоимость накопления энергии
+            Levelized cost of storage
 
-        """
+            Параметры (Parameters)
+            ----------
+            capex: float
+                Капитальные затраты, тыс. руб.
+                Total capital costs, thousand rubles.
+            opex: float
+                Затраты на эксплуатацию и техническое обслуживание за время t,
+                тыс. руб.
+                Operating and maintenance costs over time t, thousand rubles.
+            kWh: float
+                Количество энергии, произведенной СНЭЭ для выравнивания графика
+                нагрузки, кВт·ч
+                The amount of electricity delivered by the ESS over time t, kWh.
+            s: float
+                Сокращение затрат на топливо, тыс. руб
+            i: float
+                Темп инфляции, отн. ед.
+                Inflation, p.u.
+            e: float
+                Темп ежегодного изменения стоимости топлива, отн. ед.
+                The annual coefficient of correction of the cost of fuel, p.u."""
+        costs = self._validate_series(opex, "opex") * (1 + i) ** np.arange(self.life_span)
+        return self._levelized_cost(capex, costs, kWh)
 
-        numerator = capex + sum(
-            (opex[t] * (1 + i) ** t)
-            / (1 + self.discountRate) ** (t + 1)
-            for t in range(self.life_span)
-        )
+    def LCOS_calc(self, capex: float, opex: Sequence[float], kWh: float,
+                  s: float, i: float, e: float) -> float:
+        """Calculate LCOS after discounting escalating fuel savings."""
+        costs = self._validate_series(opex, "opex") * (1 + i) ** np.arange(self.life_span)
+        savings = s * (1 + e) ** np.arange(self.life_span)
+        return self._levelized_cost(capex, costs - savings, kWh)
 
-        denominator = sum(
-            kWh / (1 + self.discountRate) ** (t + 1)
-            for t in range(self.life_span)
-        )
-
-        LCOS = numerator / denominator
-
-        return LCOS
-
-    def LCOS_calc(self,
-                 capex,
-                 opex,
-                  kWh,
-                  s,
-                  i,
-                  e):
-        """
-        Нормированная стоимость накопления энергии
-        Levelized cost of storage
-
-        Параметры (Parameters)
-        ----------
-        capex: float
-            Капитальные затраты, тыс. руб.
-            Total capital costs, thousand rubles.
-        opex: float
-            Затраты на эксплуатацию и техническое обслуживание за время t,
-            тыс. руб.
-            Operating and maintenance costs over time t, thousand rubles.
-        kWh: float
-            Количество энергии, произведенной СНЭЭ для выравнивания графика
-            нагрузки, кВт·ч
-            The amount of electricity delivered by the ESS over time t, kWh.
-        s: float
-            Сокращение затрат на топливо, тыс. руб
-        i: float
-            Темп инфляции, отн. ед.
-            Inflation, p.u.
-        e: float
-            Темп ежегодного изменения стоимости топлива, отн. ед.
-            The annual coefficient of correction of the cost of fuel, p.u.
-        """
-
-        numerator = capex + sum(
-            (opex[t] * (1 + i) ** t - s * (1 + e) ** t)
-            / (1 + self.discountRate) ** (t + 1)
-            for t in range(self.life_span)
-        )
-
-        denominator = sum(
-            kWh / (1 + self.discountRate) ** (t + 1)
-            for t in range(self.life_span)
-        )
-
-        LCOS = numerator / denominator
-
-        return LCOS
-
-    def LCOE_calc(self,
-                  capex,
-                  opex,
-                  Ft,
-                  Et):
-        """
-        Нормированная стоимость электроэнергии
-        Levelized Cost of energy
-
-        Параметры (Parameters)
-        ----------
-        capex: float
-            Капитальные затраты, тыс. руб.
-            Total capital costs, thousand rubles.
-        opex: float
-            Затраты на эксплуатацию и техническое обслуживание за время t,
-            тыс. руб.
-            Operating and maintenance costs over time t, thousand rubles.
-        Ft: float
-            Cтоимость дизельного топлива в год за время t, тыс. руб.
-            The cost of diesel fuel per year for time t, thousand rubles.
-        Et: float
-            Полезная отпущенная электроэнергия, кВт
-            Net electricity generation, kW
-
-        """
-        numerator = capex + sum(
-            (opex[t] + Ft[t]) / (1 + self.discountRate) ** t for t in
-             range(self.life_span)
-        )
-
-        # Знаменатель формулы LCOE (сумма дисконтированной электроэнергии)
-        denominator = sum(
-            Et[t] / (1 + self.discountRate) ** t for t in range(self.life_span)
-        )
-
-        # Рассчет LCOE
-        LCOE = numerator / denominator
-
-        return LCOE
+    def LCOE_calc(self, capex: float, opex: Sequence[float], fuel_cost: Sequence[float],
+                  energy: Sequence[float]) -> float:
+        """Calculate levelized cost of generated electricity."""
+        costs = self._validate_series(opex, "opex") + self._validate_series(fuel_cost, "fuel_cost")
+        generated = self._validate_series(energy, "energy")
+        if np.any(generated <= 0):
+            raise ValueError("energy values must be positive")
+        discount = (1 + self.discount_rate) ** np.arange(self.life_span)
+        return float((capex + np.sum(costs / discount)) / np.sum(generated / discount))
