@@ -101,9 +101,11 @@ class DieselGenerator:
             raise ValueError("Generator output must be in [0, gen_capacity]")
         if fuel_density <= 0 or lower_heating_value <= 0:
             raise ValueError("Fuel density and lower heating value must be positive")
+        # Инициализация массивов
         sfc = np.zeros_like(power)
         afc = np.zeros_like(power)
         efficiency = np.zeros_like(power)
+        # Маска для работающих генераторов
         active = power > 0
         load_fraction = power[active] / self.gen_capacity # текущая загрузка ДГУ относительно номинальной мощности от 0 до 1
         sfc[active] = self.a1 / load_fraction + self.a2
@@ -164,15 +166,13 @@ class DieselGenerator:
             raise ValueError("load must be non-negative")
         if load > self.n * self.p_max:
             raise ValueError(f"load {load} exceeds fleet capacity {self.n * self.p_max}")
-        if load == 0:
-            return self._shutdown_dgs(previous_status)
         best = None
         minimum_units = max(1, int(np.ceil(load / self.p_max)))
         for units in range(minimum_units, self.n + 1):
             unit_power = max(self.p_min, min(self.p_max, load / units))
             powers = np.zeros(self.n)
             powers[:units] = unit_power
-            if powers.sum() + 1e-9 < load:
+            if powers.sum() < load:
                 continue
             statuses = np.zeros(self.n, dtype=int)
             statuses[:units] = 1

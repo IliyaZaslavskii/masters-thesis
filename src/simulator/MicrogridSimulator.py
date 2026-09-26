@@ -9,11 +9,25 @@ import pandas as pd
 
 
 class MicrogridSimulator:
-    """Run deterministic dispatch strategies over aligned load and solar series."""
+    """ Класс моделирования алгоритма управления гибридным комплексом
+        A class for modeling a hybrid complex control algorithm."""
 
     def __init__(self, data: pd.DataFrame, load_column: str, gen_column: str,
                  bess: Any, dgs: Any) -> None:
-        """Validate input columns and retain equipment models."""
+        """
+        Параметры (Parameters)
+        ----------
+        df : pd.DataFrame
+            Временной ряд нагрузки и генерации.
+        load_column : str
+            Название столбца нагрузки (кВт).
+        gen_column : str
+            Название столбца генерации (кВт).
+        bess : object
+            Класс моделирования системы накопления электрической энергии (СНЭЭ).
+        dgs : object
+            Класс моделирования работы дизель-генератора.
+        """
         missing = {load_column, gen_column} - set(data.columns)
         if missing:
             raise ValueError(f"Missing columns: {sorted(missing)}")
@@ -83,29 +97,34 @@ class MicrogridSimulator:
             battery_power, next_energy, next_soc = 0.0, history["capacity_history"][index], soc
             can_charge = self.bess.soc_status(soc) != "Возможен только разряд"
             can_discharge = self.bess.soc_status(soc) != "Возможен только заряд"
-            if net_power >= 0:
-                if can_charge:
+            if net_power >= 0: # Энергия ФЭС больше или равна нагрузке
+                if can_charge: # СНЭЭ заряжается от ФЭС
                     battery_power, next_energy, next_soc = self.bess.charge(net_power, soc)
                 if can_charge and (not forecast or can_shutdown):
                     dispatch = self.dgs.shutdown(current_status)
-                else:
+                else: # Балласт от ФЭС
                     dispatch = self.dgs.optimize_dgs(current_status, 0.0)
-            else:
+            else: # Энергия ФЭС меньше нагрузки
                 if can_discharge:
                     candidate = self.bess.discharge(-net_power, soc)
                 else:
                     candidate = (0.0, next_energy, next_soc)
                 if can_discharge and economic:
-                    with_battery = self.dgs.optimize_dgs(current_status, max(0.0, -net_power - candidate[0]))
-                    without_battery = self.dgs.optimize_dgs(current_status, -net_power)
-                    if with_battery[2] < without_battery[2]:
-                        battery_power, next_energy, next_soc, dispatch = candidate[0], candidate[1], candidate[2], with_battery
-                    else:
-                        dispatch = without_battery
-                        excess = dispatch[3] + net_power
-                        if excess > 0:
-                            battery_power, next_energy, next_soc = self.bess.charge(excess, soc)
-                else:
+                    if net_power + candidate[0] == 0: # Энергоемкости СНЭЭ достаточно для покрытия остаточной нагрузки
+                        battery_power, next_energy, next_soc = candidate
+                        dispatch = (self.dgs.shutdown(current_status) if can_shutdown
+                                    else self.dgs.optimize_dgs(current_status, 0.0))
+                    else: # Оптимальная загрузка генератора
+                        with_battery = self.dgs.optimize_dgs(current_status, -net_power - candidate[0])
+                        without_battery = self.dgs.optimize_dgs(current_status, -net_power)
+                        if with_battery[2] < without_battery[2]:
+                            battery_power, next_energy, next_soc, dispatch = candidate[0], candidate[1], candidate[2], with_battery
+                        else:
+                            dispatch = without_battery
+                            excess = dispatch[3] + net_power
+                            if excess > 0:
+                                battery_power, next_energy, next_soc = self.bess.charge(excess, soc)
+                else: # Разряд невозможен
                     battery_power, next_energy, next_soc = candidate
                     if net_power + battery_power == 0:
                         dispatch = (self.dgs.shutdown(current_status) if can_shutdown
@@ -121,7 +140,8 @@ class MicrogridSimulator:
         return history
 
     def simulator_1(self, initial_soc: float, val_dgs: np.ndarray) -> Dict[str, np.ndarray]:
-        """Run priority battery dispatch."""
+        """ Приоритетное использование СНЭЭ
+            Run priority BESS dispatch."""
         return self._run(initial_soc, val_dgs)
 
     def simulator_2(self, initial_soc: float, val_dgs: np.ndarray) -> Dict[str, np.ndarray]:
@@ -137,7 +157,8 @@ class MicrogridSimulator:
         return self._run(initial_soc, val_dgs, economic=True, forecast=True)
 
     def simulator_3(self, val_dgs: np.ndarray) -> Dict[str, np.ndarray]:
-        """Run the baseline dispatch without a battery."""
+        """Без СНЭЭ
+           Run the baseline dispatch without a battery."""
         history = self._empty_history(False)
         current_status = np.asarray(val_dgs, dtype=float)
         if current_status.shape != (self.dgs.n,):

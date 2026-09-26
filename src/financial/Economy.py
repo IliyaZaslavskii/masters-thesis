@@ -11,8 +11,19 @@ import numpy_financial as npf
 class Economy:
     """Calculate NPV, IRR, LCOS and LCOE for a fixed project lifetime."""
 
-    def __init__(self, life_span: int, discount_rate: float) -> None:
-        """Create a model and validate the horizon and discount rate."""
+    def __init__(self, life_span: int, discount_rate: float | None = None, **legacy: float) -> None:
+        """Create a model and validate the horizon and discount rate.
+            Параметры (Parameters)
+            ----------
+            life_span : int
+                Жизненный цикл проекта (лет).
+            discountRate : float
+                ставка дисконтирования (о.е.).
+        """
+        if discount_rate is None:
+            discount_rate = legacy.pop("discountRate", None)
+        if legacy or discount_rate is None:
+            raise TypeError("Economy requires life_span and discount_rate")
         if life_span < 1:
             raise ValueError("life_span must be positive")
         if discount_rate <= -1:
@@ -31,8 +42,30 @@ class Economy:
         return array
 
     def npv_calc(self, capex: float, opex: Sequence[float], cash_inflow: float,
-                 inflation: float, escalation: float) -> Tuple[np.ndarray, np.ndarray, float]:
-        """Return cumulative NPV, cumulative cost and project IRR."""
+                 inflation: float | None = None, escalation: float | None = None,
+                 **legacy: float) -> Tuple[np.ndarray, np.ndarray, float]:
+        """Return cumulative NPV, cumulative cost and project IRR.
+           Параметры (Parameters)
+           ----------
+           capex : float
+               Капитальные затраты, тыс. руб.
+               Total capital costs, thousand rubles.
+           opex: float
+               Затраты на эксплуатацию и техническое обслуживание за время t,
+               тыс. руб.
+               Operating and maintenance costs over time t, thousand rubles.
+           cash_inflow: float
+               Сокращение затрат на топливо, тыс. руб
+           inflation: float
+               Темп инфляции, отн. ед.
+               Inflation, p.u.
+           escalation: float
+               Темп ежегодного изменения стоимости топлива, отн. ед.
+               The annual coefficient of correction of the cost of fuel, p.u."""
+        inflation = inflation if inflation is not None else legacy.pop("i", None)
+        escalation = escalation if escalation is not None else legacy.pop("e", None)
+        if legacy or inflation is None or escalation is None:
+            raise TypeError("npv_calc requires inflation and escalation")
         if capex < 0:
             raise ValueError("capex must be non-negative")
         operating_cost = self._validate_series(opex, "opex")
@@ -95,7 +128,24 @@ class Economy:
 
     def LCOE_calc(self, capex: float, opex: Sequence[float], fuel_cost: Sequence[float],
                   energy: Sequence[float]) -> float:
-        """Calculate levelized cost of generated electricity."""
+        """Нормированная стоимость электроэнергии
+           Levelized Cost of energy.
+
+           Параметры (Parameters)
+           ----------
+           capex: float
+                Капитальные затраты, тыс. руб.
+                Total capital costs, thousand rubles.
+           opex: float
+                Затраты на эксплуатацию и техническое обслуживание за время t,
+                тыс. руб.
+                Operating and maintenance costs over time t, thousand rubles.
+           Ft: float
+                Cтоимость дизельного топлива в год за время t, тыс. руб.
+                The cost of diesel fuel per year for time t, thousand rubles.
+           Et: float
+                Полезная отпущенная электроэнергия, кВт
+                Net electricity generation, kW"""
         costs = self._validate_series(opex, "opex") + self._validate_series(fuel_cost, "fuel_cost")
         generated = self._validate_series(energy, "energy")
         if np.any(generated <= 0):

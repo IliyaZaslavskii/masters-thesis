@@ -63,13 +63,13 @@ class FitnessEvaluator:
         simulation = MicrogridSimulator(data, "Load, kW", "Solar, kW", battery, generators)
         baseline = simulation.simulator_3(self.dg_status)
         with_battery = simulation.simulator_2(self.initial_soc, self.dg_status)
-        delivered_energy = float(np.sum(with_battery["p_bess_history"][with_battery["p_bess_history"] > 0]))
+        delivered_energy = float(np.sum(with_battery["p_bess_history"][with_battery["p_bess_history"] > 0])) # кВт·ч
         if delivered_energy <= 0:
             return FitnessResult(self.penalty, 0.0, 0.0, 0)
-        savings = (baseline["cost_dgs_history"].sum() - with_battery["cost_dgs_history"].sum()) * -1e-3
-        capex = (self.c_capex * self.value * capacity + self.p_capex * self.value * power) * 1e-3
+        savings = (baseline["cost_dgs_history"].sum() - with_battery["cost_dgs_history"].sum()) * -1e-3 # тыс.руб.
+        capex = (self.c_capex * self.value * capacity + self.p_capex * self.value * power) * 1e-3 # тыс.руб./кВт·ч
         opex = np.full(self.lifespan, capex * self.opex_share)
-        lcos = self.economy.LCOS_calc(capex, opex, delivered_energy, savings, self.inflation, self.escalation)
+        lcos = self.economy.LCOS_calc(capex, opex, delivered_energy, savings, self.inflation, self.escalation) # тыс.руб./кВт·ч
         if not np.isfinite(lcos) or lcos <= 0:
             return FitnessResult(self.penalty, 0.0, 0.0, 0)
         npv, _, irr = self.economy.npv_calc(capex, opex, savings, self.inflation, self.escalation)

@@ -23,6 +23,7 @@ class OptProblem(ElementwiseProblem):
         self.iteration = 0
         self.best_value = float("inf")
         self.best_parameters = None
+        self.best_metrics = None
         self.history_best_value = []
         self.history_best_metrics = []
         super().__init__(vars={"x0": Integer(bounds=(lower_bound, upper_bound)),
@@ -45,9 +46,18 @@ class OptProblem(ElementwiseProblem):
         if lcos <= self.best_value:
             self.best_value = lcos
             self.best_parameters = [capacity, power]
-            metrics.update({"iter": self.iteration, "x0": capacity, "x1": power})
+            self.best_metrics = {
+                "iter": self.iteration,
+                "lcos": lcos, # тыс.руб./кВт·ч
+                "lcos_usdt_mwh": lcos * 1e6 / 85, # $/MWh
+                "npv_last": metrics["npv_last"],
+                "irr": metrics["irr"],
+                "h": metrics["h"],
+                "x0": capacity,
+                "x1": power,
+            }
         self.history_best_value.append(self.best_value)
-        self.history_best_metrics.append(dict(metrics))
+        self.history_best_metrics.append(dict(self.best_metrics))
         if self.iteration_log_interval and self.iteration % self.iteration_log_interval == 0:
             print(f"[{self.iteration:>4}] LCOS={lcos * 1e3:.3f} руб/кВт·ч; best={self.best_value * 1e3:.3f}")
         self.iteration += 1
