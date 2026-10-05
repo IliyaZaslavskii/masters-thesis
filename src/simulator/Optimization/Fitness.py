@@ -66,9 +66,9 @@ class FitnessEvaluator:
         delivered_energy = float(np.sum(with_battery["p_bess_history"][with_battery["p_bess_history"] > 0])) # кВт·ч
         if delivered_energy <= 0:
             return FitnessResult(self.penalty, 0.0, 0.0, 0)
-        savings = (baseline["cost_dgs_history"].sum() - with_battery["cost_dgs_history"].sum()) * -1e-3 # тыс.руб.
-        capex = (self.c_capex * self.value * capacity + self.p_capex * self.value * power) * 1e-3 # тыс.руб./кВт·ч
-        opex = np.full(self.lifespan, capex * self.opex_share)
+        savings = (baseline["cost_dgs_history"].sum() - with_battery["cost_dgs_history"].sum()) * 1e-3 # тыс.руб.
+        capex = (self.c_capex * self.value * capacity + self.p_capex * self.value * power) * 1e-3 # тыс.руб
+        opex = np.full(self.lifespan, capex * self.opex_share) # тыс.руб
         lcos = self.economy.LCOS_calc(capex, opex, delivered_energy, savings, self.inflation, self.escalation) # тыс.руб./кВт·ч
         if not np.isfinite(lcos) or lcos <= 0:
             return FitnessResult(self.penalty, 0.0, 0.0, 0)
