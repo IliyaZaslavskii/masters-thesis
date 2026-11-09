@@ -36,11 +36,11 @@ class OptProblem(ElementwiseProblem):
         power = capacity * ratio
         result = self.objective([capacity, power])
         if hasattr(result, "lcos"):
-            metrics = {"lcos": result.lcos, "npv_last": result.npv, "irr": result.irr, "h": result.hours}
+            metrics = {"lcos": result.lcos, "npv_last": result.npv, "irr": result.irr, "h": result.hours, "AFC": result.afc, "lcos_canon": result.lcos_canon, "baseline_CF": result.baseline_CF, "with_battery_CF": result.with_battery_CF}
         elif isinstance(result, tuple):
-            metrics = dict(zip(("lcos", "npv_last", "irr", "h"), result))
+            metrics = dict(zip(("lcos", "npv_last", "irr", "h", "AFC", "lcos_canon", "baseline_CF", "with_battery_CF"), result))
         else:
-            metrics = {"lcos": float(result), "npv_last": None, "irr": None, "h": None}
+            metrics = {"lcos": float(result), "npv_last": None, "irr": None, "h": None, "AFC": None, "lcos_canon": None, "baseline_CF": None, "with_battery_CF": None}
         lcos = float(metrics["lcos"])
         output["F"] = lcos
         if lcos <= self.best_value:
@@ -53,8 +53,12 @@ class OptProblem(ElementwiseProblem):
                 "npv_last": metrics["npv_last"],
                 "irr": metrics["irr"],
                 "h": metrics["h"],
+                "AFC": metrics["AFC"],
+                "lcos_canon": metrics["lcos_canon"],
                 "x0": capacity,
                 "x1": power,
+                "baseline_CF": metrics["baseline_CF"],
+                "with_battery_CF": metrics["with_battery_CF"]
             }
         self.history_best_value.append(self.best_value)
         self.history_best_metrics.append(dict(self.best_metrics))
