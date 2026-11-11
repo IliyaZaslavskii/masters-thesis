@@ -130,7 +130,7 @@ class DieselGenerator:
                 Предыдущее состояние генераторов (1 - вкл, 0 - выкл).
                 Previous status of generators (1 - on, 0 - off)."""
         _, fuel_consumption, _ = self.calculate_fuel_consumption(power)
-        return float(np.sum(fuel_consumption) * self.fuel_price)
+        return float(np.sum(fuel_consumption) * self.fuel_price) # руб
 
     def optimize_dgs(self, previous_status: np.ndarray, load: float
                      ) -> Tuple[np.ndarray, np.ndarray, float, float, int]:
@@ -182,7 +182,8 @@ class DieselGenerator:
         if best is None:
             raise RuntimeError("No feasible generator dispatch was found")
         cost, powers, statuses = best
-        return powers, statuses, float(cost), float(powers.sum()), int(statuses.sum())
+        _, fuel_consumption, _ = self.calculate_fuel_consumption(powers)
+        return powers, fuel_consumption, statuses, float(cost), float(powers.sum()), int(statuses.sum())
 
     # Legacy method name retained for existing notebooks.
     optimize_DGs = optimize_dgs
@@ -193,7 +194,8 @@ class DieselGenerator:
         previous_status = np.asarray(previous_status)
         statuses = np.zeros(self.n, dtype=int)
         powers = np.zeros(self.n)
-        return powers, statuses, self.total_cost(powers, statuses, previous_status), 0.0, 0
+        _, fuel_consumption, _ = self.calculate_fuel_consumption(powers)
+        return powers, fuel_consumption, statuses, self.total_cost(powers, statuses, previous_status), 0.0, 0
 
     def shutdown(self, previous_status: np.ndarray):
         """Public, descriptive alias for the legacy shutdown helper."""
