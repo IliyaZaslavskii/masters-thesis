@@ -61,6 +61,7 @@ class FitnessEvaluator:
                           self.eff_ch, self.eff_ds, self.cp)
         generators = DieselGenerator(self.num_dgs, self.gen_capacity, self.a1, self.a2, self.fuel_price)
         simulation = MicrogridSimulator(data, "Load, kW", "Solar, kW", battery, generators)
+        full_solar_power = size * data['Solar, kW'].max()
         baseline = simulation.simulator_3(self.dg_status)
         with_battery = simulation.simulator_2(self.initial_soc, self.dg_status)
         delivered_energy = float(np.sum(with_battery["p_bess_history"][with_battery["p_bess_history"] > 0])) # кВт·ч
