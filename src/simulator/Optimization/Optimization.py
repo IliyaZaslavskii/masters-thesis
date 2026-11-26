@@ -32,8 +32,8 @@ class OptProblem(ElementwiseProblem):
 
     def _evaluate(self, variables: dict, output: dict, *args, **kwargs) -> None:
         """Evaluate one candidate and update monotonic best-so-far history."""
-        capacity, ratio = float(variables["x0"]), float(variables["C1"])
-        power = capacity * ratio
+        capacity, crate = float(variables["x0"]), float(variables["C1"])
+        power = capacity * crate
         result = self.objective([capacity, power])
         if hasattr(result, "lcos"):
             metrics = {"lcos": result.lcos, "npv_last": result.npv, "irr": result.irr, "h": result.hours, "AFC": result.afc, "lcos_canon": result.lcos_canon, "baseline_CF": result.baseline_CF, "with_battery_CF": result.with_battery_CF}
