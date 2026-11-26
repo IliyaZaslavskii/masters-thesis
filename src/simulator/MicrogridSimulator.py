@@ -48,14 +48,15 @@ class MicrogridSimulator:
                    "shunt_gen": np.zeros(self.n), "p_dgs_history": np.zeros(self.n),
                    "net_dgs": np.zeros(self.n), "shunt_dgs": np.zeros(self.n),
                    "cost_dgs_history": np.zeros(self.n), "is_on_dgs_history": np.zeros(self.n, dtype=np.int8),
-                   "p_dgs_unit_history": np.zeros((self.n, self.dgs.n)), "new_net_power": np.zeros(self.n)}
+                   "p_dgs_unit_history": np.zeros((self.n, self.dgs.n)), "new_net_power": np.zeros(self.n),
+                   "afc": np.zeros((self.n, self.dgs.n))}
         if with_battery:
             history.update({"capacity_history": np.zeros(self.n + 1), "soc_history": np.zeros(self.n + 1),
                             "p_bess_history": np.zeros(self.n)})
         return history
 
     def _record(self, history: Dict[str, np.ndarray], index: int, total_power: float,
-                generator_power: np.ndarray, generator_status: np.ndarray,
+                generator_power: np.ndarray, afc: np.ndarray, generator_status: np.ndarray,
                 cost: float, battery_power: float = 0.0,
                 soc: float | None = None, energy: float | None = None) -> None:
         """Record one dispatch step and compute unmet/excess power consistently."""
@@ -71,6 +72,7 @@ class MicrogridSimulator:
         history["cost_dgs_history"][index] = cost
         history["is_on_dgs_history"][index] = int(np.sum(generator_status > 0))
         history["p_dgs_unit_history"][index] = generator_power
+        history["afc"][index] = afc
         history["new_net_power"][index] = history["net_gen"][index] + history["net_dgs"][index] + battery_power - self.load[index]
         if "p_bess_history" in history:
             history["p_bess_history"][index] = battery_power
@@ -100,9 +102,9 @@ class MicrogridSimulator:
             if net_power >= 0: # Энергия ФЭС больше или равна нагрузке
                 if can_charge: # СНЭЭ заряжается от ФЭС
                     battery_power, next_energy, next_soc = self.bess.charge(net_power, soc)
-                if can_charge and (not forecast or can_shutdown):
+                if can_shutdown:
                     dispatch = self.dgs.shutdown(current_status)
-                else: # Балласт от ФЭС
+                else:
                     dispatch = self.dgs.optimize_dgs(current_status, 0.0)
             else: # Энергия ФЭС меньше нагрузки
                 if can_discharge:
@@ -117,11 +119,11 @@ class MicrogridSimulator:
                     else: # Оптимальная загрузка генератора
                         with_battery = self.dgs.optimize_dgs(current_status, -net_power - candidate[0])
                         without_battery = self.dgs.optimize_dgs(current_status, -net_power)
-                        if with_battery[2] < without_battery[2]:
+                        if with_battery[3] < without_battery[3]:
                             battery_power, next_energy, next_soc, dispatch = candidate[0], candidate[1], candidate[2], with_battery
                         else:
                             dispatch = without_battery
-                            excess = dispatch[3] + net_power
+                            excess = dispatch[4] + net_power
                             if excess > 0:
                                 battery_power, next_energy, next_soc = self.bess.charge(excess, soc)
                 else: # Разряд невозможен
@@ -133,8 +135,8 @@ class MicrogridSimulator:
                         dispatch = self.dgs.optimize_dgs(
                             current_status, -net_power - battery_power
                         )
-            power, current_status, cost, total_power, _ = dispatch
-            self._record(history, index, total_power, power, current_status, cost, battery_power, next_soc, next_energy)
+            power, afc, current_status, cost, total_power, _ = dispatch
+            self._record(history, index, total_power, power, afc, current_status, cost, battery_power, next_soc, next_energy)
         for key in ("capacity_history", "soc_history"):
             history[key] = history[key][1:]
         return history
@@ -168,7 +170,7 @@ class MicrogridSimulator:
             dispatch = self.dgs.optimize_dgs(
                 current_status, 0.0 if net_power >= 0 else -net_power
             )
-            power, current_status, cost, total_power, _ = dispatch
+            power, afc, current_status, cost, total_power, _ = dispatch
             if net_power >= 0:
                 difference = total_power - load
                 if difference >= 0:
@@ -192,4 +194,5 @@ class MicrogridSimulator:
             history["p_dgs_unit_history"][index] = power
             history["net_dgs"][index] = total_power - history["shunt_dgs"][index]
             history["new_net_power"][index] = history["net_gen"][index] + history["net_dgs"][index] - load
+            history["afc"][index] = afc
         return history
